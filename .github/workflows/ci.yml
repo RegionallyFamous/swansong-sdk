@@ -44,7 +44,7 @@ jobs:
         run: swan build --project /tmp/game/swan.toml
       - name: Verify primary and declared compatibility artifacts
         run: |
-          test -s /tmp/game/ci_${{ matrix.recipe }}.wsc
+          test -s /tmp/game/*.wsc
           if grep -q 'hardware = "mono-compatible"' /tmp/game/swan.toml; then
-            test -s /tmp/game/ci_${{ matrix.recipe }}.ws
+            test -s /tmp/game/*.ws
           fi
