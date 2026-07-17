@@ -1,0 +1,16 @@
+# Native toolchain pinned for SwanSong SDK 0.1 (2026-07-17)
+target-wswan 0.1.0-3
+target-wswan-syslibs 0.2.0.r254.d7d97ce-1
+wf-tools 0.2.0-3
+wf-superfamiconv 0.11.0.r188.55771f9-1
+toolchain-gcc-ia16-elf-gcc 6.3.0.r147159.e7507d1845e-1
+toolchain-gcc-ia16-elf-gcc-libs 6.3.0.r147159.e7507d1845e-1
+toolchain-gcc-ia16-elf-binutils 2.43.1.r119451.5cc0e071551-1
+
+# Canonical CI image. Its internal package revisions differ slightly from the
+# native pin, so ROM hashes are compared only within the same toolchain lane.
+cbrzeszczot/wonderful@sha256:1bd074214c0592a5fca3f26ce0c47d3a809f48e83f68705189fe30c78e75435e
+ci: target-wswan-syslibs 0.2.0.r253
+ci: toolchain-gcc-ia16-elf-gcc 6.3.0.r147156.aeca9aa010a-1
+ci: toolchain-gcc-ia16-elf-gcc-libs 6.3.0.r147156.aeca9aa010a-1
+ci: toolchain-gcc-ia16-elf-binutils 2.43.1.r119450.cb9b8d4a0ad-2

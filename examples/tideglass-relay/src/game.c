@@ -1,0 +1,72 @@
+#include <swan/swan.h>
+#include "swan_assets.h"
+#include "swan_controls.h"
+#include "swan_project.h"
+#include "diagnostic_art.h"
+#include "model.h"
+
+static game_model_t model;
+
+void swan_game_boot(void) {
+    game_model_reset(&model);
+    swan_diagnostic_art_load();
+    swan_audio_init(swan_asset_theme_instruments, SWAN_ASSET_THEME_INSTRUMENT_COUNT);
+    swan_audio_play_music(&swan_asset_theme_song);
+}
+
+void swan_scene_enter(swan_scene_id_t scene, uint16_t argument) {
+    (void)argument;
+    if (scene == SWAN_SCENE_PLAY) {
+        game_model_reset(&model);
+        swan_core_reset_session();
+        swan_audio_play_music(&swan_asset_theme_song);
+    }
+    swan_core_invalidate();
+}
+
+void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
+    if (scene == SWAN_SCENE_TITLE && (frame->input->actions_pressed & (1u << SWAN_ACTION_CONFIRM)) != 0) {
+        swan_core_request_scene(SWAN_SCENE_PLAY, 0);
+    } else if (scene == SWAN_SCENE_PLAY) {
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_LEFT)) != 0) {
+            game_model_move(&model, -1, 0); swan_core_invalidate();
+        }
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_RIGHT)) != 0) {
+            game_model_move(&model, 1, 0); swan_core_invalidate();
+        }
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_UP)) != 0) {
+            game_model_move(&model, 0, -1); swan_core_invalidate();
+        }
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_DOWN)) != 0) {
+            game_model_move(&model, 0, 1); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_CONFIRM)) != 0) {
+            game_model_collect(&model); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_CANCEL)) != 0) {
+            game_model_damage(&model); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_RESET)) != 0) {
+            game_model_reset(&model); swan_core_invalidate();
+        }
+    }
+}
+
+void swan_scene_render(swan_scene_id_t scene) {
+    uint8_t i;
+    swan_gfx_fill(0, 0, 0, 28, 18, SWAN_TILE_ATTR(scene == SWAN_SCENE_TITLE ? 1 : 0, 0));
+    if (scene == SWAN_SCENE_TITLE) {
+        swan_gfx_put_tile(0, 13, 8, SWAN_TILE_ATTR(4, 0));
+        swan_gfx_put_tile(0, 14, 8, SWAN_TILE_ATTR(5, 0));
+    } else {
+        swan_gfx_put_tile(0, (uint8_t)model.x, (uint8_t)model.y, SWAN_TILE_ATTR(2, 0));
+        for (i = 0; i < model.health; ++i)
+            swan_gfx_put_tile(0, (uint8_t)(1 + i), 1, SWAN_TILE_ATTR(4, 0));
+        for (i = 0; i < model.pickups; ++i)
+            swan_gfx_put_tile(0, (uint8_t)(1 + i), 3, SWAN_TILE_ATTR(3, 0));
+        if (model.complete)
+            swan_gfx_fill(0, 10, 1, 8, 1, SWAN_TILE_ATTR(5, 0));
+    }
+}
+
+void swan_scene_exit(swan_scene_id_t scene) { (void)scene; }

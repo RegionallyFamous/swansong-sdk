@@ -1,0 +1,85 @@
+schema_version = 1
+
+[game]
+id = "@@PROJECT_ID@@"
+title = "@@PROJECT_TITLE@@"
+version = "0.1.0"
+template = "grid-tactics"
+hardware = "color-required"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "none"
+save_bytes = 0
+rtc = false
+
+[controls.actions]
+left = ["X4"]
+right = ["X2"]
+up = ["X3"]
+down = ["X1"]
+confirm = ["A"]
+cancel = ["B"]
+end_turn = ["START"]
+reset = ["Y4"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 12288
+vram_tiles = 384
+palettes = 12
+sprites = 64
+sprites_per_scanline = 24
+audio_bytes = 32768
+
+[resources]
+work_ram_bytes = 3072
+vram_tiles = 6
+palettes = 1
+sprites = 32
+sprites_per_scanline = 16
+
+[[scenes]]
+id = "title"
+
+[[scenes]]
+id = "battle"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable title screen after a fresh boot."
+plan = "tests/play/neutral.json"
+required_checks = ["title state is visually distinct", "frame is stable", "no crash or hang"]
+
+[[play.scenarios]]
+id = "interaction"
+title = "Cursor and unit action"
+goal = "Enter battle, move the cursor, and select a unit."
+plan = "tests/play/interaction.json"
+required_checks = ["battle begins", "cursor reaches a new cell", "selection changes state"]
+
+[[play.scenarios]]
+id = "success"
+title = "Successful unit action"
+goal = "Select a unit, move it to another cell, and finish the turn."
+plan = "tests/play/success.json"
+required_checks = ["unit becomes selected", "unit moves to cursor", "turn state can advance"]
+
+[[play.scenarios]]
+id = "failure"
+title = "Blocked and invalid action"
+goal = "Try an invalid move, cancel, and continue play."
+plan = "tests/play/failure.json"
+required_checks = ["cursor is clamped to board", "invalid action does not corrupt state", "cancel clears selection"]
+
+[[play.scenarios]]
+id = "reset"
+title = "Turn and deterministic reset"
+goal = "Advance a turn and reset to the exact initial battle."
+plan = "tests/play/reset.json"
+required_checks = ["turn advances", "reset restores units", "replay hashes match"]

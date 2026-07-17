@@ -1,0 +1,14 @@
+#ifndef @@PROJECT_C_ID@@_MODEL_H
+#define @@PROJECT_C_ID@@_MODEL_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define PUZZLE_CELL_COUNT 5
+typedef struct { uint8_t cursor; uint8_t cells[PUZZLE_CELL_COUNT]; bool complete; } game_model_t;
+void game_model_reset(game_model_t *model);
+void game_model_move(game_model_t *model, int8_t delta);
+void game_model_toggle(game_model_t *model);
+void game_model_clear(game_model_t *model);
+
+#endif
