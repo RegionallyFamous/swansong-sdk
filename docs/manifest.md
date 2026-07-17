@@ -1,0 +1,68 @@
+# `swan.toml` reference
+
+The checked-in manifest is the project source of truth. Unknown top-level data
+is reserved for forward-compatible tools; all documented values are validated.
+See `schema/swan.schema.json` for editor integration.
+
+## Game and cartridge
+
+`schema_version` is currently `1`. `[game]` requires a lowercase kebab-case
+`id`, human `title`, semantic `version`, one of the three recipe names,
+`color-required` or `mono-compatible` hardware, `horizontal` or `vertical`
+orientation, and a declared `initial_scene` C identifier.
+
+`[cartridge]` contains byte-sized Wonderful publisher/game/version IDs, a save
+type, logical save payload bytes, and an RTC flag. Supported save names mirror
+Wonderful: `none`; `eeprom-128b`, `eeprom-1kb`, or `eeprom-2kb`; and
+`sram-8kb`, `sram-32kb`, `sram-128kb`, `sram-256kb`, or `sram-512kb`.
+
+## Controls and scenes
+
+`[controls.actions]` maps up to 16 semantic C identifiers to one or more raw
+WonderSwan keys: `X1`–`X4`, `Y1`–`Y4`, `A`, `B`, or `START`. Both directional
+clusters remain available so vertical games can map their primary direction
+without losing the secondary cluster.
+
+Every `[[scenes]]` entry has a unique C identifier and optional asset IDs. Scene
+transitions are generated as integer IDs and switch dispatch; there are no
+runtime function-pointer tables.
+
+The generated controls header also exposes `SWAN_PRIMARY_UP/RIGHT/DOWN/LEFT`
+and `SWAN_SECONDARY_*`. Horizontal projects use the X cluster as primary;
+vertical projects use the Y cluster. Raw X and Y keys remain available.
+
+## Assets
+
+Each `[[assets]]` entry has an identifier, type, source path, optional static
+group, and optional `flip_dedupe`. Source paths cannot escape the project.
+Graphic types are `fullscreen`, `tilemap`, `spritesheet`, `metatiles`, and
+`font`; all route through the pinned Wonderful SuperFamiconv backend while
+retaining stable SwanSong IDs and reports. Audio types are `music` and `sfx`.
+Music TOML declares up to 16
+16-sample instruments, four-channel `[note, instrument, volume]` rows, Q8 frame
+tempo, and looping. SFX TOML declares prioritized, timed command steps. Both
+compile into typed runtime sequencer data and are deterministically hashed and
+budgeted.
+
+## Resources and budgets
+
+`[resources]` records fixed work RAM, runtime-owned VRAM tiles and palettes,
+visible sprites, and worst-case scanline reservations that cannot be derived
+from static artwork. `[budgets]` caps ROM bytes, work RAM, peak VRAM tiles,
+peak palettes, sprites, scanline sprites, and audio source bytes. The ROM
+budget may never exceed 8 MiB.
+
+After linking, `swan report` also reads Wonderful's ELF usage analysis and
+enforces the physical internal-RAM ceilings. Wonderful places common data in a
+16 KiB mono area and Color-only data in a separate 48 KiB extension; SwanSong
+checks both areas rather than incorrectly applying the mono ceiling to their
+combined Color total. These totals include the runtime, game, generated data,
+and linker reservations and are intentionally separate from the game-owned
+`[resources].work_ram_bytes` reservation.
+
+## Play scenarios
+
+Each `[[play.scenarios]]` declares a kebab-case ID, title, goal, checked-in
+`swan-song-frame-input-plan-v1` JSON path, required visual/behavioral checks, and
+whether audio evidence is meaningful. All generated contracts require a fresh
+boot and media inspection.

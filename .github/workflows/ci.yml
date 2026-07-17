@@ -1,0 +1,50 @@
+name: SDK CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python-and-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install SDK
+        run: python -m pip install .
+      - name: Run tooling and host tests
+        run: make test
+
+  wonderful-recipes:
+    runs-on: ubuntu-latest
+    container:
+      image: cbrzeszczot/wonderful@sha256:1bd074214c0592a5fca3f26ce0c47d3a809f48e83f68705189fe30c78e75435e
+    strategy:
+      matrix:
+        recipe: [arcade-action, menu-puzzle, grid-tactics]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Python and host compiler
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends python3 python3-pip build-essential
+      - name: Install SDK
+        run: python3 -m pip install --break-system-packages .
+      - name: Scaffold and host-test recipe
+        run: |
+          swan new ci-${{ matrix.recipe }} --template ${{ matrix.recipe }} --directory /tmp/game
+          swan test --project /tmp/game/swan.toml
+      - name: Build recipe ROM with pinned Wonderful
+        env:
+          SWANSONG_SDK_DIR: ${{ github.workspace }}
+          WONDERFUL_TOOLCHAIN: /opt/wonderful
+        run: swan build --project /tmp/game/swan.toml
+      - name: Verify primary and declared compatibility artifacts
+        run: |
+          test -s /tmp/game/ci_${{ matrix.recipe }}.wsc
+          if grep -q 'hardware = "mono-compatible"' /tmp/game/swan.toml; then
+            test -s /tmp/game/ci_${{ matrix.recipe }}.ws
+          fi

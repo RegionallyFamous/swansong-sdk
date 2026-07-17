@@ -1,0 +1,125 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swansong-sdk"
+version = "0.1.0"
+description = "Deterministic WonderSwan game framework tooling"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Regionally Famous" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Topic :: Games/Entertainment",
+]
+dependencies = []
+
+[project.scripts]
+swan = "swansong_sdk.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.setuptools.data-files]
+"share/swansong-sdk" = ["toolchain.lock"]
+"share/swansong-sdk/include/swan" = [
+  "include/swan/assets.h",
+  "include/swan/audio.h",
+  "include/swan/core.h",
+  "include/swan/debug.h",
+  "include/swan/gfx.h",
+  "include/swan/input.h",
+  "include/swan/legacy.h",
+  "include/swan/random.h",
+  "include/swan/rtc.h",
+  "include/swan/save.h",
+  "include/swan/scene.h",
+  "include/swan/swan.h",
+  "include/swan/types.h",
+  "include/swan/version.h",
+  "include/swan/wswan.h",
+]
+"share/swansong-sdk/src" = [
+  "src/assets.c",
+  "src/audio.c",
+  "src/core.c",
+  "src/debug.c",
+  "src/gfx.c",
+  "src/input.c",
+  "src/legacy.c",
+  "src/platform_wonderswan.c",
+  "src/random.c",
+  "src/rtc.c",
+  "src/runtime_internal.h",
+  "src/save.c",
+  "src/scene.c",
+  "src/wswan_keys.c",
+  "src/wswan_rtc.c",
+  "src/wswan_storage.c",
+]
+"share/swansong-sdk/mk" = [
+  "mk/runtime-library.mk",
+  "mk/swansong-runtime.mk",
+]
+"share/swansong-sdk/schema" = ["schema/swan.schema.json"]
+"share/swansong-sdk/docs" = [
+  "docs/cli.md",
+  "docs/framework-feedback-loop.md",
+  "docs/getting-started.md",
+  "docs/manifest.md",
+  "docs/swansong-desktop-integration.md",
+]
+"share/swansong-sdk/templates/common" = [
+  "templates/common/.gitignore.tmpl",
+  "templates/common/Makefile.tmpl",
+  "templates/common/README.md.tmpl",
+]
+"share/swansong-sdk/templates/common/src" = ["templates/common/src/diagnostic_art.h.tmpl"]
+"share/swansong-sdk/templates/common/tests/play" = [
+  "templates/common/tests/play/neutral.json.tmpl",
+  "templates/common/tests/play/interaction.json.tmpl",
+  "templates/common/tests/play/failure.json.tmpl",
+  "templates/common/tests/play/success.json.tmpl",
+  "templates/common/tests/play/reset.json.tmpl",
+]
+"share/swansong-sdk/templates/arcade-action" = ["templates/arcade-action/swan.toml.tmpl"]
+"share/swansong-sdk/templates/arcade-action/assets/audio" = ["templates/arcade-action/assets/audio/theme.toml.tmpl"]
+"share/swansong-sdk/templates/arcade-action/src" = [
+  "templates/arcade-action/src/game.c.tmpl",
+  "templates/arcade-action/src/model.c.tmpl",
+  "templates/arcade-action/src/model.h.tmpl",
+]
+"share/swansong-sdk/templates/arcade-action/tests/host" = ["templates/arcade-action/tests/host/test_model.c.tmpl"]
+"share/swansong-sdk/templates/arcade-action/tests/play" = ["templates/arcade-action/tests/play/failure.json.tmpl"]
+"share/swansong-sdk/templates/menu-puzzle" = ["templates/menu-puzzle/swan.toml.tmpl"]
+"share/swansong-sdk/templates/menu-puzzle/src" = [
+  "templates/menu-puzzle/src/game.c.tmpl",
+  "templates/menu-puzzle/src/model.c.tmpl",
+  "templates/menu-puzzle/src/model.h.tmpl",
+]
+"share/swansong-sdk/templates/menu-puzzle/tests/host" = ["templates/menu-puzzle/tests/host/test_model.c.tmpl"]
+"share/swansong-sdk/templates/menu-puzzle/tests/play" = [
+  "templates/menu-puzzle/tests/play/failure.json.tmpl",
+  "templates/menu-puzzle/tests/play/success.json.tmpl",
+]
+"share/swansong-sdk/templates/grid-tactics" = ["templates/grid-tactics/swan.toml.tmpl"]
+"share/swansong-sdk/templates/grid-tactics/src" = [
+  "templates/grid-tactics/src/game.c.tmpl",
+  "templates/grid-tactics/src/model.c.tmpl",
+  "templates/grid-tactics/src/model.h.tmpl",
+]
+"share/swansong-sdk/templates/grid-tactics/tests/host" = ["templates/grid-tactics/tests/host/test_model.c.tmpl"]
+"share/swansong-sdk/templates/grid-tactics/tests/play" = [
+  "templates/grid-tactics/tests/play/failure.json.tmpl",
+  "templates/grid-tactics/tests/play/interaction.json.tmpl",
+  "templates/grid-tactics/tests/play/reset.json.tmpl",
+  "templates/grid-tactics/tests/play/success.json.tmpl",
+]

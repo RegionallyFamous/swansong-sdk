@@ -1,0 +1,11 @@
+#ifndef lantern_circuit_MODEL_H
+#define lantern_circuit_MODEL_H
+#include <stdbool.h>
+#include <stdint.h>
+typedef struct { uint8_t cursor_x, cursor_y, unit_x, unit_y, turn; bool selected; } game_model_t;
+void game_model_reset(game_model_t *model);
+void game_model_cursor(game_model_t *model, int8_t dx, int8_t dy);
+void game_model_confirm(game_model_t *model);
+void game_model_cancel(game_model_t *model);
+void game_model_end_turn(game_model_t *model);
+#endif

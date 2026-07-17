@@ -1,0 +1,14 @@
+#include <assert.h>
+#include "model.h"
+int main(void) {
+    game_model_t model;
+    uint8_t i;
+    game_model_reset(&model);
+    game_model_move(&model, -1);
+    assert(model.cursor == 0);
+    for (i = 0; i < PUZZLE_CELL_COUNT; ++i) { game_model_toggle(&model); if (i + 1 < PUZZLE_CELL_COUNT) game_model_move(&model, 1); }
+    assert(model.complete);
+    game_model_clear(&model);
+    assert(!model.complete);
+    return 0;
+}

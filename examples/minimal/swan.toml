@@ -1,0 +1,46 @@
+schema_version = 1
+
+[game]
+id = "minimal-swan"
+title = "Minimal Swan"
+version = "0.1.0"
+template = "menu-puzzle"
+hardware = "mono-compatible"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "none"
+save_bytes = 0
+rtc = false
+
+[controls.actions]
+confirm = ["A"]
+reset = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 8192
+vram_tiles = 256
+palettes = 8
+sprites = 32
+sprites_per_scanline = 16
+audio_bytes = 16384
+
+[resources]
+work_ram_bytes = 512
+sprites = 0
+sprites_per_scanline = 0
+
+[[scenes]]
+id = "title"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable initial frame."
+plan = "tests/play/neutral.json"
+required_checks = ["stable frame", "no crash or hang"]

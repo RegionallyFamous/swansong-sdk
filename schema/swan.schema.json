@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/swan.schema.json",
+  "title": "SwanSong SDK project",
+  "type": "object",
+  "required": ["schema_version", "game", "cartridge", "controls", "scenes", "budgets", "resources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "game": {
+      "type": "object",
+      "required": ["id", "title", "template", "hardware", "orientation", "initial_scene"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+        "title": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "template": {"enum": ["arcade-action", "menu-puzzle", "grid-tactics"]},
+        "hardware": {"enum": ["color-required", "mono-compatible"]},
+        "orientation": {"enum": ["horizontal", "vertical"]},
+        "initial_scene": {"$ref": "#/$defs/cIdentifier"}
+      }
+    },
+    "cartridge": {
+      "type": "object",
+      "required": ["publisher_id", "game_id", "version", "save_type", "save_bytes", "rtc"],
+      "properties": {
+        "publisher_id": {"type": "integer", "minimum": 0, "maximum": 255},
+        "game_id": {"type": "integer", "minimum": 0, "maximum": 255},
+        "version": {"type": "integer", "minimum": 0, "maximum": 255},
+        "save_type": {"enum": ["none", "eeprom-128b", "eeprom-1kb", "eeprom-2kb", "sram-8kb", "sram-32kb", "sram-128kb", "sram-256kb", "sram-512kb"]},
+        "save_bytes": {"type": "integer", "minimum": 0},
+        "rtc": {"type": "boolean"}
+      }
+    },
+    "controls": {
+      "type": "object",
+      "required": ["actions"],
+      "properties": {
+        "actions": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": {"$ref": "#/$defs/cIdentifier"},
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"enum": ["X1", "X2", "X3", "X4", "Y1", "Y2", "Y3", "Y4", "A", "B", "START"]}
+          }
+        }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"$ref": "#/$defs/cIdentifier"},
+          "assets": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "source"],
+        "properties": {
+          "id": {"$ref": "#/$defs/cIdentifier"},
+          "type": {"enum": ["fullscreen", "tilemap", "spritesheet", "metatiles", "font", "music", "sfx"]},
+          "source": {"type": "string", "minLength": 1},
+          "group": {"$ref": "#/$defs/cIdentifier"},
+          "flip_dedupe": {"type": "boolean"}
+        }
+      }
+    },
+    "budgets": {"$ref": "#/$defs/budgets"},
+    "resources": {
+      "type": "object",
+      "required": ["work_ram_bytes", "vram_tiles", "palettes", "sprites", "sprites_per_scanline"],
+      "properties": {
+        "work_ram_bytes": {"type": "integer", "minimum": 0},
+        "vram_tiles": {"type": "integer", "minimum": 0},
+        "palettes": {"type": "integer", "minimum": 0},
+        "sprites": {"type": "integer", "minimum": 0},
+        "sprites_per_scanline": {"type": "integer", "minimum": 0}
+      }
+    },
+    "play": {
+      "type": "object",
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "goal", "plan", "required_checks"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+              "title": {"type": "string", "minLength": 1},
+              "goal": {"type": "string", "minLength": 1},
+              "plan": {"type": "string", "minLength": 1},
+              "required_checks": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "audio": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "cIdentifier": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+    "budgets": {
+      "type": "object",
+      "required": ["rom_bytes", "work_ram_bytes", "vram_tiles", "palettes", "sprites", "sprites_per_scanline", "audio_bytes"],
+      "properties": {
+        "rom_bytes": {"type": "integer", "minimum": 1, "maximum": 8388608},
+        "work_ram_bytes": {"type": "integer", "minimum": 1},
+        "vram_tiles": {"type": "integer", "minimum": 1},
+        "palettes": {"type": "integer", "minimum": 1},
+        "sprites": {"type": "integer", "minimum": 1},
+        "sprites_per_scanline": {"type": "integer", "minimum": 1},
+        "audio_bytes": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+#include <swan/swan.h>
+#include "swan_controls.h"
+#include "swan_project.h"
+#include "diagnostic_art.h"
+#include "model.h"
+
+static game_model_t model;
+void swan_game_boot(void) { game_model_reset(&model); swan_diagnostic_art_load(); }
+void swan_scene_enter(swan_scene_id_t scene, uint16_t argument) {
+    (void)argument;
+    if (scene == SWAN_SCENE_PUZZLE) { game_model_reset(&model); swan_core_reset_session(); }
+    swan_core_invalidate();
+}
+void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
+    if (scene == SWAN_SCENE_TITLE && (frame->input->actions_pressed & (1u << SWAN_ACTION_CONFIRM)) != 0) {
+        swan_core_request_scene(SWAN_SCENE_PUZZLE, 0);
+    } else if (scene == SWAN_SCENE_PUZZLE) {
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_PREVIOUS)) != 0) {
+            game_model_move(&model, -1); swan_core_invalidate();
+        }
+        if ((frame->input->actions_repeated & (1u << SWAN_ACTION_NEXT)) != 0) {
+            game_model_move(&model, 1); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_CONFIRM)) != 0) {
+            game_model_toggle(&model); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_CLEAR)) != 0) {
+            game_model_clear(&model); swan_core_invalidate();
+        }
+        if ((frame->input->actions_pressed & (1u << SWAN_ACTION_RESET)) != 0) {
+            game_model_reset(&model); swan_core_invalidate();
+        }
+    }
+}
+void swan_scene_render(swan_scene_id_t scene) {
+    uint8_t i;
+    swan_gfx_fill(0, 0, 0, 28, 18, SWAN_TILE_ATTR(scene == SWAN_SCENE_TITLE ? 1 : 0, 0));
+    if (scene == SWAN_SCENE_TITLE) {
+        swan_gfx_put_tile(0, 12, 8, SWAN_TILE_ATTR(4, 0));
+        swan_gfx_put_tile(0, 14, 8, SWAN_TILE_ATTR(5, 0));
+    } else {
+        for (i = 0; i < PUZZLE_CELL_COUNT; ++i)
+            swan_gfx_put_tile(0, (uint8_t)(8 + i * 2), 8, SWAN_TILE_ATTR((uint16_t)(2 + model.cells[i] + (i == model.cursor ? 2 : 0)), 0));
+        if (model.complete)
+            swan_gfx_fill(0, 8, 11, 11, 1, SWAN_TILE_ATTR(5, 0));
+    }
+}
+void swan_scene_exit(swan_scene_id_t scene) { (void)scene; }

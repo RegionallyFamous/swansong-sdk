@@ -1,0 +1,93 @@
+schema_version = 1
+
+[game]
+id = "tideglass-relay"
+title = "Tideglass Relay"
+version = "0.1.0"
+template = "arcade-action"
+hardware = "color-required"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "none"
+save_bytes = 0
+rtc = false
+
+[controls.actions]
+left = ["X4"]
+right = ["X2"]
+up = ["X3"]
+down = ["X1"]
+confirm = ["A"]
+cancel = ["B"]
+reset = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 12288
+vram_tiles = 384
+palettes = 12
+sprites = 64
+sprites_per_scanline = 24
+audio_bytes = 32768
+
+[resources]
+work_ram_bytes = 2048
+vram_tiles = 6
+palettes = 1
+sprites = 24
+sprites_per_scanline = 12
+
+[[scenes]]
+id = "title"
+
+[[scenes]]
+id = "play"
+
+[[assets]]
+id = "theme"
+type = "music"
+source = "assets/audio/theme.toml"
+group = "common"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable title screen after a fresh boot."
+plan = "tests/play/neutral.json"
+required_checks = ["title state is visually distinct", "frame is stable", "no crash or hang"]
+audio = true
+
+[[play.scenarios]]
+id = "interaction"
+title = "Movement and pickup"
+goal = "Start play, move, and collect an object."
+plan = "tests/play/interaction.json"
+required_checks = ["play begins", "movement changes position", "pickup changes progress"]
+audio = true
+
+[[play.scenarios]]
+id = "success"
+title = "Completed collection"
+goal = "Collect all three objects and reach the completed state."
+plan = "tests/play/success.json"
+required_checks = ["three pickups register", "completion state is distinct", "music remains audible"]
+audio = true
+
+[[play.scenarios]]
+id = "failure"
+title = "Boundary and damage"
+goal = "Exercise a blocked edge and damage path."
+plan = "tests/play/failure.json"
+required_checks = ["world boundary blocks movement", "damage changes health", "game remains responsive"]
+
+[[play.scenarios]]
+id = "reset"
+title = "Deterministic reset"
+goal = "Change state, reset, and recover the exact initial play state."
+plan = "tests/play/reset.json"
+required_checks = ["reset clears progress", "player returns to spawn", "replay hashes match"]

@@ -1,0 +1,22 @@
+#include "model.h"
+
+void game_model_reset(game_model_t *model) {
+    uint8_t i;
+    model->cursor = 0;
+    model->complete = false;
+    for (i = 0; i < PUZZLE_CELL_COUNT; ++i) model->cells[i] = 0;
+}
+void game_model_move(game_model_t *model, int8_t delta) {
+    int8_t next = (int8_t)model->cursor + delta;
+    if (next >= 0 && next < PUZZLE_CELL_COUNT) model->cursor = (uint8_t)next;
+}
+void game_model_toggle(game_model_t *model) {
+    uint8_t i;
+    model->cells[model->cursor] ^= 1u;
+    model->complete = true;
+    for (i = 0; i < PUZZLE_CELL_COUNT; ++i) if (!model->cells[i]) model->complete = false;
+}
+void game_model_clear(game_model_t *model) {
+    model->cells[model->cursor] = 0;
+    model->complete = false;
+}

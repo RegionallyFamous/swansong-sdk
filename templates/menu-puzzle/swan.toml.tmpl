@@ -1,0 +1,82 @@
+schema_version = 1
+
+[game]
+id = "@@PROJECT_ID@@"
+title = "@@PROJECT_TITLE@@"
+version = "0.1.0"
+template = "menu-puzzle"
+hardware = "mono-compatible"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "eeprom-128b"
+save_bytes = 128
+rtc = false
+
+[controls.actions]
+previous = ["X4"]
+next = ["X2"]
+confirm = ["A"]
+clear = ["B"]
+reset = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 8192
+vram_tiles = 256
+palettes = 8
+sprites = 32
+sprites_per_scanline = 16
+audio_bytes = 16384
+
+[resources]
+work_ram_bytes = 1024
+vram_tiles = 6
+palettes = 1
+sprites = 8
+sprites_per_scanline = 4
+
+[[scenes]]
+id = "title"
+
+[[scenes]]
+id = "puzzle"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable title screen after a fresh boot."
+plan = "tests/play/neutral.json"
+required_checks = ["title state is visually distinct", "frame is stable", "no crash or hang"]
+
+[[play.scenarios]]
+id = "interaction"
+title = "Cursor and placement"
+goal = "Enter the puzzle, move the cursor, and place a value."
+plan = "tests/play/interaction.json"
+required_checks = ["puzzle begins", "cursor changes", "placement changes a cell"]
+
+[[play.scenarios]]
+id = "success"
+title = "Completed circuit"
+goal = "Place values in every cell and reach the completed state."
+plan = "tests/play/success.json"
+required_checks = ["all cells change", "completion state is distinct", "valid placements persist"]
+
+[[play.scenarios]]
+id = "failure"
+title = "Invalid solution"
+goal = "Submit an incomplete board and remain able to edit it."
+plan = "tests/play/failure.json"
+required_checks = ["invalid board does not complete", "clear removes a value", "puzzle remains responsive"]
+
+[[play.scenarios]]
+id = "reset"
+title = "Deterministic reset"
+goal = "Change cells, reset, and recover the empty initial puzzle."
+plan = "tests/play/reset.json"
+required_checks = ["reset clears cells", "cursor returns to zero", "replay hashes match"]
