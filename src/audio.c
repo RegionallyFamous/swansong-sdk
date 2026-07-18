@@ -14,9 +14,11 @@ static const swan_song_t SWAN_FAR *music;
 static uint16_t music_row;
 static uint32_t music_accumulator_q8;
 static swan_audio_voice_t voices[SWAN_AUDIO_CHANNEL_COUNT];
+static swan_audio_voice_t paused_voices[SWAN_AUDIO_CHANNEL_COUNT];
 static uint8_t base_volume[SWAN_AUDIO_CHANNEL_COUNT];
 static sfx_playback_t effects[SWAN_AUDIO_CHANNEL_COUNT];
 static uint8_t master_volume = 15;
+static bool audio_paused;
 
 static uint8_t scaled_volume(uint8_t volume) {
     if (volume > 15) volume = 15;
@@ -64,32 +66,81 @@ void swan_audio_init(const swan_instrument_t SWAN_FAR *instruments, uint8_t coun
     music = 0;
     music_row = 0;
     music_accumulator_q8 = 0;
+    audio_paused = false;
     memset(voices, 0, sizeof(voices));
+    memset(paused_voices, 0, sizeof(paused_voices));
     memset(base_volume, 0, sizeof(base_volume));
     memset(effects, 0, sizeof(effects));
 }
 
 void swan_audio_play_music(const swan_song_t SWAN_FAR *song) {
+    if (audio_paused) (void)swan_audio_resume();
     music = song;
     music_row = 0;
     music_accumulator_q8 = 0;
+    audio_paused = false;
     if (music != 0 && music->rows != 0 && music->row_count != 0)
         apply_music_row();
 }
 
 void swan_audio_stop_music(void) {
     uint8_t channel;
+    bool effect_active = false;
     music = 0;
     music_row = 0;
     music_accumulator_q8 = 0;
     for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        if (audio_paused && paused_voices[channel].owner == SWAN_VOICE_MUSIC) {
+            paused_voices[channel].owner = SWAN_VOICE_SILENT;
+            paused_voices[channel].note = SWAN_AUDIO_NOTE_OFF;
+            paused_voices[channel].volume = 0;
+            paused_voices[channel].priority = 0;
+            base_volume[channel] = 0;
+        }
         if (voices[channel].owner == SWAN_VOICE_MUSIC) {
             voices[channel].owner = SWAN_VOICE_SILENT;
             voices[channel].note = SWAN_AUDIO_NOTE_OFF;
             voices[channel].volume = 0;
             base_volume[channel] = 0;
         }
+        if (effects[channel].clip != 0) effect_active = true;
     }
+    if (audio_paused && !effect_active) {
+        memset(paused_voices, 0, sizeof(paused_voices));
+        audio_paused = false;
+    }
+}
+
+bool swan_audio_pause(void) {
+    uint8_t channel;
+    bool active = music != 0;
+    if (audio_paused) return false;
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        if (effects[channel].clip != 0) active = true;
+    }
+    if (!active) return false;
+    memcpy(paused_voices, voices, sizeof(voices));
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        voices[channel].owner = SWAN_VOICE_SILENT;
+        voices[channel].note = SWAN_AUDIO_NOTE_OFF;
+        voices[channel].volume = 0;
+        voices[channel].priority = 0;
+    }
+    audio_paused = true;
+    return true;
+}
+
+bool swan_audio_resume(void) {
+    uint8_t channel;
+    if (!audio_paused) return false;
+    memcpy(voices, paused_voices, sizeof(voices));
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        if (voices[channel].owner != SWAN_VOICE_SILENT)
+            voices[channel].volume = scaled_volume(base_volume[channel]);
+    }
+    memset(paused_voices, 0, sizeof(paused_voices));
+    audio_paused = false;
+    return true;
 }
 
 static void start_effect_step(uint8_t channel) {
@@ -103,7 +154,8 @@ static void start_effect_step(uint8_t channel) {
 int8_t swan_audio_play_sfx(const swan_sfx_t SWAN_FAR *sfx) {
     int8_t chosen = -1;
     uint8_t channel;
-    if (sfx == 0 || sfx->steps == 0 || sfx->step_count == 0) return -1;
+    if (audio_paused || sfx == 0 || sfx->steps == 0 ||
+            sfx->step_count == 0) return -1;
     for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
         if (voices[channel].owner != SWAN_VOICE_SFX) {
             chosen = (int8_t)channel;
@@ -131,7 +183,9 @@ void swan_audio_stop_all(void) {
     music = 0;
     music_row = 0;
     music_accumulator_q8 = 0;
+    audio_paused = false;
     memset(effects, 0, sizeof(effects));
+    memset(paused_voices, 0, sizeof(paused_voices));
     for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
         voices[channel].note = SWAN_AUDIO_NOTE_OFF;
         voices[channel].volume = 0;
@@ -143,6 +197,7 @@ void swan_audio_stop_all(void) {
 
 void swan_audio_tick(void) {
     uint8_t channel;
+    if (audio_paused) return;
     for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
         if (effects[channel].clip != 0) {
             if (effects[channel].remaining > 0) --effects[channel].remaining;
@@ -186,8 +241,16 @@ void swan_audio_tick(void) {
 void swan_audio_set_master_volume(uint8_t volume) {
     uint8_t channel;
     master_volume = volume > 15 ? 15 : volume;
-    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel)
-        voices[channel].volume = scaled_volume(base_volume[channel]);
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        voices[channel].volume = audio_paused ? 0 :
+            scaled_volume(base_volume[channel]);
+    }
+    if (audio_paused) {
+        for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+            if (paused_voices[channel].owner != SWAN_VOICE_SILENT)
+                paused_voices[channel].volume = scaled_volume(base_volume[channel]);
+        }
+    }
 }
 
 const swan_audio_voice_t *swan_audio_voices(void) {
@@ -197,6 +260,15 @@ const swan_audio_voice_t *swan_audio_voices(void) {
 
 uint16_t swan_audio_music_row(void) {
     return music_row;
+}
+
+swan_audio_position_t swan_audio_position(void) {
+    swan_audio_position_t position;
+    position.row = music_row;
+    position.phase_q8 = (uint16_t)music_accumulator_q8;
+    position.playing = music != 0;
+    position.paused = audio_paused;
+    return position;
 }
 
 const swan_instrument_t SWAN_FAR *swan_audio_internal_instruments(void) {

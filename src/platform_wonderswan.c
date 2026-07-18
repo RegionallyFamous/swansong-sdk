@@ -116,6 +116,17 @@ void swan_platform_set_vertical(bool vertical) {
     ws_display_set_icons(vertical ? WS_LCD_ICON_ORIENT_V : WS_LCD_ICON_ORIENT_H);
 }
 
+void swan_platform_reset_audio_hardware(void) {
+    ws_sound_reset();
+    outportw(WS_SOUND_VOL_CH1_PORT, 0);
+    outportw(WS_SOUND_VOL_CH3_PORT, 0);
+    ws_sound_set_wavetable_address(&wse_wavetable1);
+    outportb(WS_SOUND_OUT_CTRL_PORT,
+             WS_SOUND_OUT_CTRL_SPEAKER_ENABLE |
+             WS_SOUND_OUT_CTRL_HEADPHONE_ENABLE |
+             WS_SOUND_OUT_CTRL_SPEAKER_VOLUME_100);
+}
+
 static void commit_graphics(void) {
     uint8_t layer;
     uint16_t generation;
@@ -287,12 +298,7 @@ void main(void) {
     ws_display_set_icons(config.vertical ? WS_LCD_ICON_ORIENT_V : WS_LCD_ICON_ORIENT_H);
     ws_display_scroll_screen1_to(0, 0);
     ws_display_scroll_screen2_to(0, 0);
-    ws_sound_reset();
-    ws_sound_set_wavetable_address(&wse_wavetable1);
-    outportb(WS_SOUND_OUT_CTRL_PORT,
-             WS_SOUND_OUT_CTRL_SPEAKER_ENABLE |
-             WS_SOUND_OUT_CTRL_HEADPHONE_ENABLE |
-             WS_SOUND_OUT_CTRL_SPEAKER_VOLUME_100);
+    swan_platform_reset_audio_hardware();
     /* Keep the display disabled until the first fully prepared frame. */
     swan_core_init(&config);
     commit_graphics();

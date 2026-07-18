@@ -507,6 +507,7 @@ def _play_contract(manifest: Manifest) -> dict[str, object]:
                 "plan": scenario.plan,
                 "requiredChecks": list(scenario.required_checks),
                 "requiresAudioEvidence": scenario.audio,
+                "audioExpectation": scenario.audio_expectation,
                 "freshBoot": True,
                 "requiresMediaInspection": True,
             }

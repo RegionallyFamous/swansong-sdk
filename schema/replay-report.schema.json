@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/replay-report.schema.json",
+  "title": "SwanSong replay inspection report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "ok"],
+  "properties": {
+    "schema": {"const": "swansong-replay-report-v1"},
+    "ok": {"type": "boolean"},
+    "project": {"type": ["string", "null"]},
+    "planFile": {"type": "string"},
+    "checkpointFile": {"type": ["string", "null"]},
+    "traceFile": {"type": ["string", "null"]},
+    "outputFile": {"type": "string"},
+    "plan": {"type": "object"},
+    "scenario": {"type": ["object", "null"]},
+    "inputSegments": {"type": "array", "items": {"type": "object"}},
+    "checkpoints": {"type": "array", "items": {"type": "object"}},
+    "evidenceBindings": {"type": "array", "items": {"type": "object"}},
+    "unboundEvidence": {"type": "array", "items": {"type": "string"}},
+    "trace": {"type": ["object", "null"]},
+    "timeline": {"type": "array", "items": {"type": "object"}},
+    "error": {"type": "object"}
+  }
+}

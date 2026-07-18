@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/minimize-report.schema.json",
+  "title": "SwanSong minimization report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "ok"],
+  "properties": {
+    "schema": {"const": "swansong-minimize-report-v1"},
+    "ok": {"type": "boolean"},
+    "project": {"type": ["string", "null"]},
+    "rom": {"type": "string"},
+    "sourcePlan": {"type": "string"},
+    "predicateFile": {"type": "string"},
+    "outputPlan": {"type": "string"},
+    "evidenceDirectory": {"type": ["string", "null"]},
+    "reportFile": {"type": "string"},
+    "predicate": {
+      "oneOf": [
+        {"$ref": "failure-predicate.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "preserved": {"type": "boolean"},
+    "source": {"$ref": "#/$defs/metrics"},
+    "minimized": {"$ref": "#/$defs/metrics"},
+    "evaluations": {"type": "integer", "minimum": 0},
+    "cacheHits": {"type": "integer", "minimum": 0},
+    "maximumEvaluations": {"type": "integer", "minimum": 1},
+    "limitReached": {"type": "boolean"},
+    "sourceResult": {"type": "object"},
+    "minimizedResult": {"type": "object"},
+    "finalVerificationResult": {"type": "object"},
+    "reductions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "beforeFrames", "afterFrames", "beforeInputFrameAtoms", "afterInputFrameAtoms"],
+        "properties": {
+          "phase": {"enum": ["normalize-transitions", "delete-frame-chunk", "delete-input-atom"]},
+          "beforeFrames": {"type": "integer", "minimum": 1},
+          "afterFrames": {"type": "integer", "minimum": 1},
+          "beforeInputFrameAtoms": {"type": "integer", "minimum": 0},
+          "afterInputFrameAtoms": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "error": {"type": "object"}
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "totalFrames", "eventCount", "activeInputFrames", "inputFrameAtoms"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "totalFrames": {"type": "integer", "minimum": 1},
+        "eventCount": {"type": "integer", "minimum": 1},
+        "activeInputFrames": {"type": "integer", "minimum": 0},
+        "inputFrameAtoms": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

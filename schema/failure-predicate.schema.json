@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/failure-predicate.schema.json",
+  "title": "SwanSong minimization failure predicate v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "path", "equals"],
+      "properties": {
+        "schema": {"const": "swansong-failure-predicate-v1"},
+        "kind": {"const": "structured-evidence"},
+        "path": {"type": "string", "pattern": "^(|/(?:[^~]|~[01])*)$"},
+        "equals": true
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "messageEquals"],
+      "properties": {
+        "schema": {"const": "swansong-failure-predicate-v1"},
+        "kind": {"const": "execution-error"},
+        "messageEquals": {"type": "string", "minLength": 1}
+      }
+    }
+  ]
+}

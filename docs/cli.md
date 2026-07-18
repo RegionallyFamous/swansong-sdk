@@ -107,6 +107,120 @@ frames, normalizes controls, compresses unchanged inputs, preserves a neutral
 fresh boot, and writes `swan-song-frame-input-plan-v1`. JSON output uses
 `swansong-scenario-record-report-v1`.
 
+## swan author
+
+Usage: swan author create KIND ID [--project PATH] [--output DOCUMENT] [--json]
+
+Usage: swan author validate DOCUMENT [--project PATH] [--json]
+
+Usage: swan author report DOCUMENT [--project PATH] [--output REPORT] [--json]
+
+Usage: swan author export DOCUMENT --output SOURCE [--project PATH] [--json]
+
+Provides the headless contracts behind Studio's tilemap/layer, sprite
+animation/hitbox, palette/mono, collision/path, scene-flow, and audio
+pattern/instrument editors. Kinds are `tilemap`, `sprites`, `palette`,
+`collision`, `scene-flow`, and `audio`. Create defaults to
+`authoring/ID.KIND.json`.
+
+All paths are resolved against the project containing `swan.toml` and must
+remain within it through symlinks. Every write exclusively creates a new file;
+existing documents, sources, reports, and exports are never overwritten. The
+formats contain identifiers and data only—no command or script field is
+accepted, and Author never launches another tool.
+
+Audio exports directly to the existing SDK music TOML format. Palette exports
+a deterministic PNG swatch. The other four kinds export a hash-bound
+`swansong-author-handoff-v1` document that states the existing Wonderful asset
+lane or portable-model integration point. They do not introduce a competing
+compiler. Reports use `swansong-author-operation-report-v1`, always set
+`gameplayEvidence` false, and never claim a visual or audio preview is ROM
+evidence. See [Visual authoring contracts](visual-authoring.md).
+
+## swan minimize
+
+Usage: swan minimize --project PATH --plan PLAN --predicate PREDICATE --output PLAN [--json]
+
+Delta-reduces a failing exact-frame input plan while preserving a declared,
+machine-checkable result. The predicate must use
+`swansong-failure-predicate-v1` and select one of two closed forms:
+
+- `structured-evidence` compares the value at an RFC 6901 JSON pointer with an
+  exact JSON value. Each candidate is run with SwanSong's normal bit-exact
+  replay verification.
+- `execution-error` compares the complete SwanSong error message with
+  `messageEquals`. Each candidate is executed twice and both errors must be
+  byte-identical. A timeout, transport failure, or different message therefore
+  cannot accidentally preserve an unrelated failure.
+
+Frame zero is immutable and remains neutral. The reducer expands the plan into
+effective frame input, applies deterministic delta debugging to remove frame
+chunks, removes individual chord inputs, and repeats until it is one-minimal or
+`--max-evaluations` is reached. Removing frames shifts later input earlier, so
+the result minimizes unnecessary waits as well as actions. The default limit is
+256 distinct candidates; the cache, accepted reductions, limit status, source
+and minimized digests, and exact observed results are recorded in
+`swansong-minimize-report-v1`.
+
+The source plan must already satisfy the predicate. The final candidate is
+fresh-boot verified once more before the output plan is written. Structured
+evidence is stored under `build/swansong/minimize` by default; use
+`--evidence-output` to select another directory and `--report` to persist the
+report. SwanSong is the only execution backend.
+
+Example structured-evidence predicate:
+
+```json
+{
+  "schema": "swansong-failure-predicate-v1",
+  "kind": "structured-evidence",
+  "path": "/failure/code",
+  "equals": "invalid-transition"
+}
+```
+
+## swan replay
+
+Usage: swan replay --project PATH (--plan PLAN | --scenario ID) [--checkpoints FILE] [--evidence ID=DIR] [--trace FILE] [--json]
+
+Builds a read-only frame timeline for SwanSong Studio, CI, or a game-playing
+agent. This command does not emulate or execute the cartridge—`swan play`
+remains the execution command. The report combines:
+
+- compact effective-input segments and indexed input-change points from a
+  validated `swan-song-frame-input-plan-v1`;
+- declared scenario goal, required checks, and audible/silent/any audio
+  expectation when
+  `--scenario` is used;
+- ordered `swansong-replay-checkpoints-v1` annotations;
+- one or more fully decoded PNG/WAV/structured evidence directories bound with
+  repeatable `--evidence ID=DIRECTORY`; and
+- optional per-frame trace summaries, with scalar fields retained and large
+  collections represented by counts.
+
+Checkpoint evidence IDs must resolve to supplied evidence. The report calls out
+unbound evidence, hashes the plan, trace, PNG, WAV, and structured evidence,
+and provides a sorted `timeline` suitable for a scrubber without expanding
+every unchanged frame. JSON uses `swansong-replay-report-v1`; `--output`
+writes the same deterministic report to a file.
+
+Checkpoint annotations use this contract:
+
+```json
+{
+  "schema": "swansong-replay-checkpoints-v1",
+  "checkpoints": [
+    {
+      "id": "movement-stops",
+      "frameIndex": 143,
+      "label": "Player stops responding",
+      "requiredCheck": "directional controls remain operational",
+      "evidence": ["failure"]
+    }
+  ]
+}
+```
+
 ## swan evidence-diff
 
 Usage: swan evidence-diff --before DIR --after DIR [--json]
@@ -171,19 +285,26 @@ release before packaging.
 
 Each play gate must also have `build/swansong/<scenario>/observation.json` using
 `swan-song-evidence-observation-v1`. The record binds the ROM, PNG, and WAV
-hashes, names an observer, asserts PNG inspection, asserts WAV inspection when
-the scenario declares audio, records a `pass` verdict, and has one non-empty
-observation for every manifest `required_checks` entry. Only a person or
+hashes, names an observer, asserts PNG and WAV inspection, records a `pass`
+verdict, and has one non-empty observation for every manifest
+`required_checks` entry. Release fully decodes a non-empty hash-bound WAV in
+all modes, requires non-zero PCM for `audible`, and requires zero PCM for
+`silent`. Only a person or
 game-playing agent that inspected the current media should create this record;
 execution success and changing hashes cannot create it automatically.
 
 On success, Release creates a ZIP containing the Color ROM, the mono validation
 ROM when present, the resource report, release notes, PNG/WAV/JSON evidence for
 each declared scenario, its inspected observation record, pinned SDK/toolchain
-provenance, and sorted SHA-256 checksums. SDK provenance includes both the
-semantic version and deterministic payload revision, and Release refuses a
-resolved SDK that differs from `[sdk]` in `swan.toml`. PNG and WAV files are fully decoded
-before acceptance. ZIP members are sorted
+provenance, SPDX and CycloneDX SBOMs, an unsigned in-toto/SLSA provenance
+statement, and sorted SHA-256 checksums. SDK provenance includes both the
+semantic version and
+deterministic payload revision, and Release refuses a resolved SDK that differs
+from `[sdk]` in `swan.toml`. Toolchain provenance must contain an immutable
+image digest and the exact package set declared by `toolchain.lock`; incomplete
+or mutable provenance fails before packaging. See
+[Supply chain](supply-chain.md) for the artifact contract. PNG and WAV files
+are fully decoded before acceptance. ZIP members are sorted
 and use a fixed timestamp and mode, making unchanged inputs byte-identical.
 --output accepts a ZIP filename or destination directory. --notes supplies
 Markdown; otherwise the SDK generates deterministic notes from the manifest.
@@ -202,7 +323,7 @@ fresh SwanSong evidence and manifest exactly:
   "scenario": "interaction",
   "verdict": "pass",
   "pngInspected": true,
-  "wavInspected": false,
+  "wavInspected": true,
   "observer": "release playtester",
   "romSHA256": "...",
   "capturePNG_SHA256": "...",

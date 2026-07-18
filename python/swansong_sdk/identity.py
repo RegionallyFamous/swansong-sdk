@@ -10,7 +10,7 @@ from .layout import sdk_root
 
 
 _PAYLOAD_DIRECTORIES = ("docs", "include", "mk", "schema", "src", "templates")
-_PAYLOAD_FILES = ("toolchain.lock",)
+_PAYLOAD_FILES = ("CHANGELOG.md", "toolchain.lock")
 
 
 def _payload_files() -> list[tuple[str, Path]]:

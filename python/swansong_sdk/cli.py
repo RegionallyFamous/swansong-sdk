@@ -7,10 +7,17 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 
+from .authoring import (
+    KINDS as AUTHORING_KINDS, REPORT_SCHEMA as AUTHORING_REPORT_SCHEMA,
+    AuthoringError, default_document, export_document, operation_report,
+    validate_document,
+)
 from .generator import GenerationError, asset_report, generate, validate_budgets
 from .evidence import EvidenceError, EvidenceThresholds, diff_evidence
 from .fuzzing import FuzzError, generate_fuzz_plan
@@ -22,9 +29,14 @@ from .operations import (
     RELEASE_SCHEMA, OperationsError, canonical_json, development_session, doctor_report,
     release_project,
 )
-from .plans import PlanError, load_plan
+from .minimize import (
+    FailureObservation, MinimizeError, minimize_plan,
+    observe_evidence, observe_execution_error, validate_failure_predicate,
+)
+from .plans import PlanError, load_plan, load_plan_file
 from .png2bpp import PNGError
 from .profiler import ProfileError, profile_resources
+from .replay import ReplayError, build_replay_report, evidence_binding, validate_checkpoints
 from .scaffold import RECIPES, ScaffoldError, create_project
 from .scenario import ScenarioError, record_frame_log
 from .swansong import SwanSongError, play
@@ -130,6 +142,9 @@ def command_assets(args: argparse.Namespace) -> None:
 def _run_make(manifest, targets: list[str]) -> None:
     environment = os.environ.copy()
     environment.setdefault("SWANSONG_SDK_DIR", str(sdk_root()))
+    environment.setdefault(
+        "SWAN", f"{shlex.quote(sys.executable)} -m swansong_sdk.cli",
+    )
     environment.setdefault(
         "SWAN_GFX_HARDWARE_TILE_CAPACITY",
         "512" if manifest.hardware == "mono-compatible" else "1024",
@@ -331,6 +346,298 @@ def command_scenario_record(args: argparse.Namespace) -> None:
     else:
         print(f"Recorded {len(report['plan']['events'])} input transitions")
         print(f"Plan: {destination}")
+
+
+def _project_owned_path(manifest, value: str, *, label: str) -> Path:
+    raw = Path(value)
+    candidate = raw if raw.is_absolute() else manifest.root / raw
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(manifest.root.resolve())
+    except ValueError as exc:
+        raise AuthoringError(f"{label} must remain inside the project root") from exc
+    if resolved == manifest.root.resolve():
+        raise AuthoringError(f"{label} must name a file inside the project root")
+    return resolved
+
+
+def _write_new_file(path: Path, payload: bytes, *, label: str) -> None:
+    if path.exists():
+        raise AuthoringError(f"refusing to overwrite existing {label}: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as destination:
+            destination.write(payload)
+    except FileExistsError as exc:
+        raise AuthoringError(f"refusing to overwrite existing {label}: {path}") from exc
+
+
+def _load_author_document(manifest, argument: str) -> tuple[Path, dict[str, object]]:
+    path = _project_owned_path(manifest, argument, label="authoring document")
+    return path, validate_document(_read_json_object(path, "authoring document"))
+
+
+def _print_author_report(report: dict[str, object]) -> None:
+    print(
+        f"Author {str(report['operation']).upper()}: {report['kind']} "
+        f"({len(report['findings'])} finding(s))"
+    )
+    print(f"Document: {report['document']}")
+    if report["output"]:
+        print(f"Output: {report['output']}")
+    print("Authoring output is not gameplay evidence.")
+
+
+def command_author_create(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    document = default_document(args.kind, args.id)
+    destination = _project_owned_path(
+        manifest,
+        args.output or f"authoring/{args.id}.{args.kind}.json",
+        label="authoring document output",
+    )
+    if destination.suffix.lower() != ".json":
+        raise AuthoringError("authoring document output must use a .json suffix")
+    _write_new_file(
+        destination, canonical_json(document).encode("utf-8"),
+        label="authoring document",
+    )
+    report = operation_report(
+        "create", document, project=manifest.id, document_path=destination,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_validate(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    report = operation_report(
+        "validate", document, project=manifest.id, document_path=path,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_report(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    report = operation_report(
+        "report", document, project=manifest.id, document_path=path,
+    )
+    if args.output:
+        destination = _project_owned_path(
+            manifest, args.output, label="author report output",
+        )
+        if destination.suffix.lower() != ".json":
+            raise AuthoringError("author report output must use a .json suffix")
+        report["output"] = str(destination)
+        _write_new_file(
+            destination, canonical_json(report).encode("utf-8"),
+            label="author report",
+        )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_export(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    destination = _project_owned_path(
+        manifest, args.output, label="author export output",
+    )
+    payload, export = export_document(document)
+    if destination.suffix.lower() != export["requiredSuffix"]:
+        raise AuthoringError(
+            f"{document['schema']} export must use {export['requiredSuffix']}"
+        )
+    _write_new_file(destination, payload, label="author export")
+    report = operation_report(
+        "export", document, project=manifest.id, document_path=path,
+        output_path=destination, export=export,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def _candidate_failure(rom: Path, plan: dict[str, object],
+                       predicate: dict[str, object], *, output: Path,
+                       timeout: float) -> FailureObservation:
+    if predicate["kind"] == "structured-evidence":
+        try:
+            evidence = play(
+                rom, plan, output=output, verify_replay=True, timeout=timeout,
+            )
+        except SwanSongError as exc:
+            return FailureObservation(False, {
+                "kind": "unexpected-execution-error", "message": str(exc),
+            })
+        return observe_evidence(predicate, evidence)
+
+    messages: list[str] = []
+    for replay_index in range(2):
+        try:
+            play(
+                rom, plan, output=output / f"replay-{replay_index}",
+                verify_replay=False, timeout=timeout,
+            )
+        except SwanSongError as exc:
+            messages.append(str(exc))
+        else:
+            return FailureObservation(False, {"kind": "unexpected-success"})
+    if messages[0] != messages[1]:
+        return FailureObservation(False, {
+            "kind": "nondeterministic-execution-error", "messages": messages,
+        })
+    return observe_execution_error(predicate, messages[0])
+
+
+def command_minimize(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    plan_path, source_plan = load_plan_file(Path(args.plan))
+    predicate_path = Path(args.predicate).resolve()
+    predicate = validate_failure_predicate(
+        _read_json_object(predicate_path, "failure predicate"), predicate_path,
+    )
+    rom = _rom_path(manifest)
+    if not rom.is_file():
+        raise CommandError(f"ROM is not built: {rom}; run swan build first")
+
+    def evaluator(candidate: dict[str, object]) -> FailureObservation:
+        with tempfile.TemporaryDirectory(prefix="swan-minimize-") as temporary:
+            return _candidate_failure(
+                rom, candidate, predicate, output=Path(temporary),
+                timeout=args.timeout,
+            )
+
+    minimized, report = minimize_plan(
+        source_plan, evaluator, maximum_evaluations=args.max_evaluations,
+        predicate=predicate,
+    )
+    destination = _output_path(manifest, args.output)
+    evidence_output = (
+        _output_path(manifest, args.evidence_output) if args.evidence_output else
+        manifest.root / "build" / "swansong" / "minimize"
+    )
+    final_observation = _candidate_failure(
+        rom, minimized, predicate, output=evidence_output, timeout=args.timeout,
+    )
+    if not final_observation.matched:
+        raise MinimizeError("final fresh-boot verification did not preserve the predicate")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(canonical_json(minimized))
+    report.update({
+        "project": manifest.id,
+        "rom": str(rom.resolve()),
+        "sourcePlan": str(plan_path),
+        "predicateFile": str(predicate_path),
+        "outputPlan": str(destination),
+        "evidenceDirectory": (
+            str(evidence_output.resolve())
+            if predicate["kind"] == "structured-evidence" else None
+        ),
+        "finalVerificationResult": dict(final_observation.result),
+    })
+    if args.report:
+        report_path = _output_path(manifest, args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report["reportFile"] = str(report_path)
+        report_path.write_text(canonical_json(report))
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        print(
+            f"Minimized {report['source']['totalFrames']} to "
+            f"{report['minimized']['totalFrames']} frames in "
+            f"{report['evaluations']} predicate evaluation(s)"
+        )
+        print(f"Plan: {destination}")
+
+
+def _parse_evidence_argument(value: str) -> tuple[str, Path]:
+    identifier, separator, directory = value.partition("=")
+    if not separator or not identifier or not directory:
+        raise ReplayError("evidence must use ID=DIRECTORY")
+    return identifier, Path(directory)
+
+
+def command_replay(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    scenario_metadata: dict[str, object] | None = None
+    plan_argument = args.plan
+    if args.scenario:
+        scenario = next(
+            (item for item in manifest.play_scenarios if item.id == args.scenario), None
+        )
+        if scenario is None:
+            choices = ", ".join(item.id for item in manifest.play_scenarios)
+            raise CommandError(
+                f"unknown scenario {args.scenario!r}; available: {choices or 'none declared'}"
+            )
+        if plan_argument is None:
+            plan_argument = str(manifest.root / scenario.plan)
+        scenario_metadata = {
+            "id": scenario.id,
+            "title": scenario.title,
+            "goal": scenario.goal,
+            "requiredChecks": list(scenario.required_checks),
+            "requiresAudioEvidence": scenario.audio,
+            "audioExpectation": scenario.audio_expectation,
+        }
+    if plan_argument is None:
+        raise CommandError("swan replay requires --plan or --scenario")
+    plan_path, plan = load_plan_file(Path(plan_argument))
+    checkpoints = None
+    checkpoint_path = None
+    if args.checkpoints:
+        checkpoint_path = Path(args.checkpoints).resolve()
+        checkpoints = validate_checkpoints(
+            _read_json_object(checkpoint_path, "replay checkpoints"),
+            total_frames=plan["totalFrames"], path=checkpoint_path,
+        )
+    trace = None
+    trace_path = None
+    if args.trace:
+        trace_path = Path(args.trace).resolve()
+        trace = _read_json_object(trace_path, "replay trace")
+    bindings = []
+    for raw in args.evidence:
+        identifier, directory = _parse_evidence_argument(raw)
+        bindings.append(evidence_binding(identifier, directory))
+    report = build_replay_report(
+        plan, checkpoints=checkpoints, evidence=bindings, trace=trace,
+        scenario=scenario_metadata,
+    )
+    report.update({
+        "project": manifest.id,
+        "planFile": str(plan_path),
+        "checkpointFile": str(checkpoint_path) if checkpoint_path else None,
+        "traceFile": str(trace_path) if trace_path else None,
+    })
+    if args.output:
+        destination = _output_path(manifest, args.output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        report["outputFile"] = str(destination)
+        destination.write_text(canonical_json(report))
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        print(
+            f"Replay timeline: {report['plan']['totalFrames']} frames, "
+            f"{len(report['timeline'])} indexed point(s)"
+        )
+        print(
+            f"Checkpoints: {len(report['checkpoints'])}; "
+            f"evidence: {len(report['evidenceBindings'])}"
+        )
 
 
 def _evidence_files(directory: Path) -> tuple[Path, Path, dict[str, object]]:
@@ -594,7 +901,7 @@ def command_lab(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="swan", description="Build deterministic WonderSwan games with SwanSong SDK")
-    result.add_argument("--version", action="version", version="swan 0.2.0")
+    result.add_argument("--version", action="version", version="swan 0.3.0")
     commands = result.add_subparsers(dest="command", required=True)
 
     sdk_path_parser = commands.add_parser(
@@ -680,6 +987,79 @@ def parser() -> argparse.ArgumentParser:
                           help="emit swansong-scenario-record-report-v1 JSON")
     recorder.set_defaults(handler=command_scenario_record)
 
+    author = commands.add_parser(
+        "author", help="create, validate, report, and export visual authoring documents"
+    )
+    author_actions = author.add_subparsers(dest="author_operation", required=True)
+
+    author_create = author_actions.add_parser(
+        "create", help="create a new project-owned authoring document"
+    )
+    author_create.add_argument("kind", choices=AUTHORING_KINDS)
+    author_create.add_argument("id", help="lowercase kebab-case document id")
+    author_create.add_argument("--project", help="path to swan.toml")
+    author_create.add_argument("--output", help="project-relative .json destination")
+    author_create.add_argument("--json", action="store_true",
+                               help="emit swansong-author-operation-report-v1 JSON")
+    author_create.set_defaults(handler=command_author_create)
+
+    for operation, help_text, handler in (
+        ("validate", "validate one project-owned authoring document", command_author_validate),
+        ("report", "report deterministic authoring metrics and findings", command_author_report),
+        ("export", "export an SDK source or explicit handoff document", command_author_export),
+    ):
+        subcommand = author_actions.add_parser(operation, help=help_text)
+        subcommand.add_argument("document", help="project-owned authoring JSON document")
+        subcommand.add_argument("--project", help="path to swan.toml")
+        if operation in {"report", "export"}:
+            subcommand.add_argument(
+                "--output", required=operation == "export",
+                help=(
+                    "new project-owned export destination" if operation == "export"
+                    else "optional new project-owned .json report destination"
+                ),
+            )
+        subcommand.add_argument("--json", action="store_true",
+                                help="emit swansong-author-operation-report-v1 JSON")
+        subcommand.set_defaults(handler=handler)
+
+    minimize = commands.add_parser(
+        "minimize", help="delta-reduce a failing exact-frame plan through SwanSong"
+    )
+    minimize.add_argument("--project", help="path to swan.toml")
+    minimize.add_argument("--plan", required=True,
+                          help="failing swan-song-frame-input-plan-v1 JSON")
+    minimize.add_argument("--predicate", required=True,
+                          help="swansong-failure-predicate-v1 JSON")
+    minimize.add_argument("--output", required=True,
+                          help="destination minimized plan JSON")
+    minimize.add_argument("--report", help="optional minimization report destination")
+    minimize.add_argument("--evidence-output",
+                          help="final structured-evidence verification directory")
+    minimize.add_argument("--max-evaluations", type=int, default=256,
+                          help="maximum distinct candidate plans executed")
+    minimize.add_argument("--timeout", type=float, default=300.0,
+                          help="timeout for each SwanSong execution")
+    minimize.add_argument("--json", action="store_true",
+                          help="emit swansong-minimize-report-v1 JSON")
+    minimize.set_defaults(handler=command_minimize)
+
+    replay = commands.add_parser(
+        "replay", help="build a read-only frame timeline from replay artifacts"
+    )
+    replay.add_argument("--project", help="path to swan.toml")
+    replay.add_argument("--plan", help="exact-frame plan; optional with --scenario")
+    replay.add_argument("--scenario", help="declared scenario metadata and default plan")
+    replay.add_argument("--checkpoints",
+                        help="swansong-replay-checkpoints-v1 JSON")
+    replay.add_argument("--evidence", action="append", default=[], metavar="ID=DIRECTORY",
+                        help="bind decoded SwanSong evidence; may be repeated")
+    replay.add_argument("--trace", help="optional frame trace JSON")
+    replay.add_argument("--output", help="optional replay report destination")
+    replay.add_argument("--json", action="store_true",
+                        help="emit swansong-replay-report-v1 JSON")
+    replay.set_defaults(handler=command_replay)
+
     evidence = commands.add_parser(
         "evidence-diff", help="compare decoded SwanSong PNG, WAV, and JSON evidence"
     )
@@ -760,6 +1140,9 @@ def parser() -> argparse.ArgumentParser:
 _STRUCTURED_ERROR_SCHEMAS = {
     "doctor": "swansong-doctor-report-v1",
     "scenario-record": "swansong-scenario-record-report-v1",
+    "author": AUTHORING_REPORT_SCHEMA,
+    "minimize": "swansong-minimize-report-v1",
+    "replay": "swansong-replay-report-v1",
     "evidence-diff": "swansong-evidence-diff-v1",
     "fuzz": "swansong-fuzz-report-v1",
     "profile": "swansong-profile-report-v1",
@@ -813,7 +1196,13 @@ def _emit_structured_error(args: argparse.Namespace, exc: Exception) -> bool:
         "ok": False,
         "error": {"code": "command-failed", "message": str(exc)},
     }
-    if args.command == "fuzz":
+    if args.command == "author":
+        payload.update(
+            operation=getattr(args, "author_operation", None),
+            gameplayEvidence=False,
+            notice="Authoring documents, previews, and exports are not gameplay evidence.",
+        )
+    elif args.command == "fuzz":
         payload.update(verdict="fail", findings=[{
             "severity": "error", "code": "command-failed", "message": str(exc),
         }], cases=[])
@@ -829,10 +1218,11 @@ def main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv)
         status = args.handler(args)
         return status if isinstance(status, int) else 0
-    except (CommandError, EvidenceError, FuzzError, GenerationError,
+    except (AuthoringError, CommandError, EvidenceError, FuzzError, GenerationError,
             LaboratoryError, LayoutError, ManifestError, OptimizationError,
-            OperationsError, OSError, PlanError, PNGError, ProfileError,
-            ScaffoldError, ScenarioError, SwanSongError) as exc:
+            MinimizeError, OperationsError, OSError, PlanError, PNGError,
+            ProfileError, ReplayError, ScaffoldError, ScenarioError,
+            SwanSongError) as exc:
         if args is not None and _emit_structured_error(args, exc):
             return 2
         print(f"swan: error: {exc}", file=sys.stderr)

@@ -23,11 +23,29 @@ static unsigned update_count;
 static unsigned render_count;
 static unsigned exit_count;
 static uint16_t last_argument;
+static unsigned platform_audio_reset_count;
+static uint32_t platform_audio_reset_session_tick;
+static bool platform_audio_reset_saw_silence;
 static bool rtc_boot_test_enabled;
 static swan_ws_rtc_context_t rtc_boot_context;
 static swan_rtc_backend_t rtc_boot_backend;
 static swan_rtc_status_t rtc_boot_first_status;
 static swan_rtc_status_t rtc_boot_second_status;
+
+void swan_platform_reset_audio_hardware(void) {
+    uint8_t channel;
+    ++platform_audio_reset_count;
+    platform_audio_reset_session_tick = swan_core_session_tick();
+    platform_audio_reset_saw_silence = true;
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        if (swan_audio_voices()[channel].owner != SWAN_VOICE_SILENT ||
+                swan_audio_voices()[channel].note != SWAN_AUDIO_NOTE_OFF ||
+                swan_audio_voices()[channel].volume != 0 ||
+                swan_audio_voices()[channel].priority != 0) {
+            platform_audio_reset_saw_silence = false;
+        }
+    }
+}
 
 const swan_core_config_t swan_game_config = {
     .initial_scene = 0,
@@ -139,8 +157,14 @@ static void test_wswan_keys(void) {
     CHECK(swan_ws_translate_keys(0xF001u) == 0);
 }
 
+#define NC { SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE }
 static void test_core_and_scenes(void) {
+    static const swan_audio_row_t reset_rows[1] = {
+        { { { 12, 0, 15 }, NC, NC, NC } }
+    };
+    static const swan_song_t reset_song = { reset_rows, 1, 256, true };
     swan_core_config_t config;
+    unsigned reset_count;
     memset(&config, 0, sizeof(config));
     config.initial_scene = 0;
     config.initial_argument = 7;
@@ -162,9 +186,17 @@ static void test_core_and_scenes(void) {
     CHECK(render_count == 2);
     swan_core_step(SWAN_KEY_A);
     CHECK(render_count == 2);
+    swan_audio_play_music(&reset_song);
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_MUSIC);
+    reset_count = platform_audio_reset_count;
     swan_core_reset_session();
     CHECK(swan_core_session_tick() == 0);
     CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_SILENT);
+    CHECK(platform_audio_reset_count == reset_count + 1);
+    CHECK(platform_audio_reset_session_tick == 0);
+    CHECK(platform_audio_reset_saw_silence);
+    CHECK(!swan_audio_position().playing && !swan_audio_position().paused);
+    CHECK(swan_audio_position().row == 0 && swan_audio_position().phase_q8 == 0);
     swan_debug_reset();
     CHECK(swan_scene_request(swan_core_scenes(), 2, 1));
     CHECK(!swan_scene_request(swan_core_scenes(), 3, 2));
@@ -293,7 +325,6 @@ static void test_assets_and_gfx(void) {
     }
 }
 
-#define NC { SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE }
 static void test_audio(void) {
     static const swan_audio_row_t rows[2] = {
         { { { 12, 0, 15 }, NC, NC, NC } },
@@ -302,11 +333,25 @@ static void test_audio(void) {
     static const swan_song_t song = { rows, 2, 512, true };
     static const swan_sfx_step_t step = { { 30, 0, 12 }, 2 };
     swan_sfx_t effects[6];
+    swan_audio_position_t position;
     uint8_t i;
     swan_audio_init(0, 0);
     swan_audio_play_music(&song);
     CHECK(swan_audio_voices()[0].note == 12);
     swan_audio_tick();
+    position = swan_audio_position();
+    CHECK(position.playing && !position.paused && position.row == 0);
+    CHECK(position.phase_q8 == 256);
+    CHECK(swan_audio_pause());
+    position = swan_audio_position();
+    CHECK(position.playing && position.paused && position.phase_q8 == 256);
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_SILENT);
+    swan_audio_tick();
+    CHECK(swan_audio_position().phase_q8 == 256);
+    CHECK(!swan_audio_pause());
+    CHECK(swan_audio_resume());
+    CHECK(!swan_audio_resume());
+    CHECK(swan_audio_voices()[0].note == 12);
     CHECK(swan_audio_music_row() == 0);
     swan_audio_tick();
     CHECK(swan_audio_music_row() == 1 && swan_audio_voices()[0].note == 13);
@@ -323,6 +368,33 @@ static void test_audio(void) {
     swan_audio_tick();
     swan_audio_tick();
     CHECK(swan_audio_voices()[0].owner != SWAN_VOICE_SFX);
+    CHECK(swan_audio_pause());
+    swan_audio_play_music(&song);
+    position = swan_audio_position();
+    CHECK(position.playing && !position.paused && position.row == 0);
+    CHECK(swan_audio_voices()[0].note == 12);
+    swan_audio_stop_all();
+    position = swan_audio_position();
+    CHECK(!position.playing && !position.paused && position.row == 0);
+    CHECK(position.phase_q8 == 0);
+
+    swan_audio_play_music(&song);
+    swan_audio_tick();
+    CHECK(swan_audio_pause());
+    swan_audio_stop_music();
+    position = swan_audio_position();
+    CHECK(!position.playing && !position.paused && position.phase_q8 == 0);
+    CHECK(!swan_audio_resume());
+
+    swan_audio_play_music(&song);
+    CHECK(swan_audio_play_sfx(&effects[0]) >= 0);
+    CHECK(swan_audio_pause());
+    swan_audio_stop_music();
+    position = swan_audio_position();
+    CHECK(!position.playing && position.paused && position.phase_q8 == 0);
+    CHECK(swan_audio_resume());
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_SFX);
+    swan_audio_stop_all();
 }
 
 typedef struct {

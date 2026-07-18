@@ -24,6 +24,9 @@ from .layout import LayoutError, sdk_root
 from .manifest import PROJECT_VERSION, Manifest, ManifestError, find_manifest, load_manifest
 from .plans import PlanError, load_plan
 from .png2bpp import PNGError, read_png
+from .provenance import (
+    ProvenanceError, supply_chain_artifacts, validate_provenance,
+)
 from .swansong import SwanSongError, server_command
 
 
@@ -380,7 +383,23 @@ def doctor_report(project: str | Path | None = None, *, timeout: float = 5.0) ->
         root = sdk_root().resolve()
         required = (
             "include/swan/swan.h", "src/core.c", "mk/runtime-library.mk",
-            "schema/swan.schema.json", "templates/common/Makefile.tmpl",
+            "schema/swan.schema.json", "schema/frame-input-plan.schema.json",
+            "schema/failure-predicate.schema.json",
+            "schema/minimize-report.schema.json",
+            "schema/replay-checkpoints.schema.json",
+            "schema/replay-report.schema.json",
+            "schema/author-tilemap.schema.json",
+            "schema/author-sprites.schema.json",
+            "schema/author-palette.schema.json",
+            "schema/author-collision.schema.json",
+            "schema/author-scene-flow.schema.json",
+            "schema/author-audio.schema.json",
+            "schema/author-operation-report.schema.json",
+            "schema/author-handoff.schema.json",
+            "templates/common/Makefile.tmpl",
+            "CHANGELOG.md",
+            "docs/release-notes-0.3.0.md",
+            "docs/supply-chain.md",
             "toolchain.lock",
         )
         missing = [item for item in required if not (root / item).is_file()]
@@ -761,9 +780,19 @@ def _verified_evidence_files(manifest: Manifest, scenario: object,
         raise OperationsError(
             f"play:{scenario_id} produced undecodable media evidence: {exc}"
         ) from exc
-    if bool(getattr(scenario, "audio")) and not wav_metrics.get("peakAmplitude"):
+    if not wav_metrics.get("frameCount"):
         raise OperationsError(
-            f"play:{scenario_id} declares audio evidence but its WAV is silent"
+            f"play:{scenario_id} produced empty WAV evidence"
+        )
+    audio_expectation = str(getattr(scenario, "audio_expectation", "any"))
+    peak_amplitude = int(wav_metrics.get("peakAmplitude", 0))
+    if audio_expectation == "audible" and peak_amplitude == 0:
+        raise OperationsError(
+            f"play:{scenario_id} requires audible WAV evidence but its WAV is silent"
+        )
+    if audio_expectation == "silent" and peak_amplitude != 0:
+        raise OperationsError(
+            f"play:{scenario_id} requires silent WAV evidence but its WAV is audible"
         )
     try:
         metadata = json.loads(metadata_payload)
@@ -821,11 +850,8 @@ def _verified_evidence_files(manifest: Manifest, scenario: object,
             and observation.get("pngInspected") is True
         ),
         "WAV inspection": (
-            not bool(getattr(scenario, "audio"))
-            or (
-                isinstance(observation, dict)
-                and observation.get("wavInspected") is True
-            )
+            isinstance(observation, dict)
+            and observation.get("wavInspected") is True
         ),
         "observer": (
             isinstance(observation, dict)
@@ -883,6 +909,18 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
     if not PROJECT_VERSION.fullmatch(manifest.version):
         raise OperationsError("release version is not a path-safe semantic version")
     provenance = provenance_resolver()
+    identity = sdk_identity()
+    lock_payload = _read_release_bytes(sdk_root() / "toolchain.lock", "toolchain lock")
+    try:
+        validate_provenance(
+            provenance,
+            sdk_version=identity["version"],
+            sdk_revision=identity["revision"],
+            lock_sha256=_sha256(lock_payload),
+            lock_payload=lock_payload,
+        )
+    except ProvenanceError as exc:
+        raise OperationsError(str(exc)) from exc
     resolved_version = provenance.get("sdkVersion")
     resolved_revision = provenance.get("sdkRevision")
     if manifest.sdk_version is None or manifest.sdk_revision is None:
@@ -958,6 +996,11 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
     if manifest.hardware == "mono-compatible":
         files[f"rom/{mono.name}"] = _read_release_bytes(mono, "mono validation ROM")
     files.update(verified_evidence)
+    supply_chain = supply_chain_artifacts(manifest, provenance, files)
+    files.update({
+        name: canonical_json(document).encode()
+        for name, document in supply_chain.items()
+    })
     checksum_lines = [f"{_sha256(files[name])}  {name}" for name in sorted(files)]
     files["checksums.sha256"] = ("\n".join(checksum_lines) + "\n").encode()
 

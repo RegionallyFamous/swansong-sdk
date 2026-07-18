@@ -25,6 +25,7 @@ swan test
 swan build
 swan play neutral
 swan doctor
+swan author create palette launch-palette
 swan profile --json
 swan optimize --json
 swan lab --json
@@ -37,12 +38,19 @@ resource budgets, and fresh-boot SwanSong contracts.
 
 `swan doctor` audits the complete SDK, toolchain, project, generated config,
 and SwanSong interface. `swan dev` watches project inputs and reruns a declared
-SwanSong contract. Scenario Recorder, Evidence Diff, deterministic Fuzz,
-Profiler, Asset Optimizer, and Save/RTC Lab share stable versioned JSON
+SwanSong contract. Scenario Recorder, deterministic failure-plan Minimizer,
+Replay Inspector, Evidence Diff, deterministic Fuzz, Profiler, Asset Optimizer,
+project-owned visual Authoring, and Save/RTC Lab share stable versioned JSON
 contracts with SwanSong Studio and CI. `swan release` fails closed across
 build, test, budgets, pinned toolchain provenance, and every declared SwanSong
 play gate. It requires hash-bound PNG/WAV inspection notes for every required
 check before producing a byte-deterministic release archive.
+
+Release archives also carry deterministic SPDX and CycloneDX software bills
+of materials plus an unsigned in-toto/SLSA provenance statement. The two
+complete recipe canaries under `examples/canaries` prove that a clean installed
+SDK can create, asset-build, host-test, compile, and report a bounded native WSC
+ROM without project-specific framework changes.
 
 ## Design constraints
 
@@ -63,7 +71,8 @@ See [Getting started](docs/getting-started.md), the
 [`swan.toml` reference](docs/manifest.md), [CLI reference](docs/cli.md), and
 [SwanSong Desktop integration contract](docs/swansong-desktop-integration.md).
 Framework contributors should also follow the [feedback loop](docs/framework-feedback-loop.md)
-and [contribution guide](AGENTS.md).
+and [contribution guide](AGENTS.md). Release engineers should read the
+[supply-chain contract](docs/supply-chain.md) and [0.3 release notes](docs/release-notes-0.3.0.md).
 
 ## Status
 

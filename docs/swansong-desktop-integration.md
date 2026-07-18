@@ -18,6 +18,9 @@ Desktop should expose one project workspace with:
   SwanSong's native deterministic executor.
 - Evidence review showing the complete input plan, full native PNG, WAV audio
   metrics/playback, build identity, resource report, and replay comparison.
+- Tilemap/layer, sprite animation/hitbox, palette/mono, collision/path,
+  scene-flow, and audio pattern/instrument editors backed by the packaged
+  `swan author` documents and reports rather than Desktop-private models.
 - A diagnostics console that preserves compiler and generator output without
   requiring the user to leave SwanSong.
 
@@ -33,6 +36,21 @@ The SDK calls SwanSong only through its deterministic MCP playtest contract.
 When hosted inside Desktop, the executor may be injected directly instead of
 launching a second process, but the request and evidence schemas remain the
 same. No alternate emulator or acceptance path is permitted.
+
+For replay debugging, Desktop should invoke `swan replay --json` and render its
+ordered `timeline` and `inputSegments`; it should not reinterpret raw plans or
+evidence hashes. A recorded failing plan can be handed to `swan minimize` with
+a checked `swansong-failure-predicate-v1`. Progress UI may display the final
+`swansong-minimize-report-v1`, but cancellation must discard an unverified
+candidate rather than writing it as the minimized result.
+
+Visual editors must treat project-owned authoring JSON as their source of
+truth, preserve unknown future files, and run `swan author validate` before
+offering Export. Create and Export failures caused by an existing destination
+must be presented as a safe conflict, never retried with an implicit overwrite.
+The UI must label `handoff-required` exports and repeat that authoring previews
+are not gameplay evidence. See `docs/visual-authoring.md` for each editor's
+contract and current asset-pipeline boundary.
 
 ## Distribution
 

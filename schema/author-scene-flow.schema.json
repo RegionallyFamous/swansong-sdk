@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-scene-flow.schema.json",
+  "title": "SwanSong scene-flow authoring document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "initialScene", "scenes", "transitions"],
+  "properties": {
+    "schema": {"const": "swansong-author-scene-flow-v1"},
+    "id": {"$ref": "#/$defs/id"}, "initialScene": {"$ref": "#/$defs/id"},
+    "scenes": {
+      "type": "array", "minItems": 1, "maxItems": 255,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {"id": {"$ref": "#/$defs/id"}, "title": {"type": "string", "minLength": 1}}
+      }
+    },
+    "transitions": {
+      "type": "array", "maxItems": 4096,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "from", "to", "event", "argument"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"}, "from": {"$ref": "#/$defs/id"},
+          "to": {"$ref": "#/$defs/id"}, "event": {"$ref": "#/$defs/id"},
+          "argument": {"type": "integer", "minimum": 0, "maximum": 65535}
+        }
+      }
+    }
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+}

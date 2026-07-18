@@ -2,6 +2,7 @@ name: SDK CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -21,14 +22,14 @@ jobs:
           mkdir -p /tmp/source-a /tmp/source-b
           tar -xzf /tmp/sdist/*.tar.gz -C /tmp/source-a
           tar -xzf /tmp/sdist/*.tar.gz -C /tmp/source-b
-          python -m build --wheel --outdir /tmp/wheel-a /tmp/source-a/swansong_sdk-0.2.0
-          python -m build --wheel --outdir /tmp/wheel-b /tmp/source-b/swansong_sdk-0.2.0
+          python -m build --wheel --outdir /tmp/wheel-a /tmp/source-a/swansong_sdk-*
+          python -m build --wheel --outdir /tmp/wheel-b /tmp/source-b/swansong_sdk-*
           cmp /tmp/wheel-a/*.whl /tmp/wheel-b/*.whl
       - name: Install and test built wheel
         run: |
           python -m pip install /tmp/wheel-a/*.whl
           cd /tmp
-          python -P -c 'import pathlib, swansong_sdk; assert "site-packages" in str(pathlib.Path(swansong_sdk.__file__).resolve())'
+          python -P -c 'import importlib.metadata, swansong_sdk; assert swansong_sdk.__version__ == importlib.metadata.version("swansong-sdk")'
           python -P -m unittest discover -s "$GITHUB_WORKSPACE/tests/python" -v
           for recipe in arcade-action menu-puzzle grid-tactics; do
             swan new "wheel-$recipe" --template "$recipe" --directory "/tmp/wheel-$recipe"
@@ -78,3 +79,38 @@ jobs:
           if grep -q 'hardware = "mono-compatible"' /tmp/game/swan.toml; then
             test -s /tmp/game/*.ws
           fi
+
+  wonderful-canaries:
+    runs-on: ubuntu-latest
+    container:
+      image: cbrzeszczot/wonderful@sha256:1bd074214c0592a5fca3f26ce0c47d3a809f48e83f68705189fe30c78e75435e
+    strategy:
+      matrix:
+        include:
+          - id: dewdrop-dash
+            template: arcade-action
+          - id: signal-orchard
+            template: grid-tactics
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Python and host compiler
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends python3 python3-pip build-essential
+      - name: Build and install the isolated SDK wheel
+        run: |
+          python3 -m pip wheel --no-deps --wheel-dir /tmp/wheel .
+          python3 -m pip install --break-system-packages --no-deps /tmp/wheel/*.whl
+          cd /tmp
+          python3 -P -c 'import importlib.metadata, swansong_sdk; assert swansong_sdk.__version__ == importlib.metadata.version("swansong-sdk")'
+      - name: Scaffold and validate production canary through installed swan
+        env:
+          SWANSONG_TOOLCHAIN_LANE: ci
+          WONDERFUL_TOOLCHAIN: /opt/wonderful
+        run: |
+          cd /tmp
+          env -u PYTHONPATH python3 -P "$GITHUB_WORKSPACE/tools/canary_gate.py" \
+            --source "$GITHUB_WORKSPACE/examples/canaries/${{ matrix.id }}" \
+            --work-root /tmp/canary-${{ matrix.id }} \
+            --template ${{ matrix.template }} > /tmp/${{ matrix.id }}-gate.json
+          python3 -c 'import json,sys; value=json.load(open(sys.argv[1])); assert value["commands"] == ["new", "assets", "test", "build", "report"]; assert value["romBytes"] <= 8*1024*1024' /tmp/${{ matrix.id }}-gate.json
