@@ -118,6 +118,8 @@ void swan_platform_set_vertical(bool vertical) {
 
 void swan_platform_reset_audio_hardware(void) {
     ws_sound_reset();
+    outportw(WS_SOUND_VOL_CH1_PORT, 0);
+    outportw(WS_SOUND_VOL_CH3_PORT, 0);
     ws_sound_set_wavetable_address(&wse_wavetable1);
     outportb(WS_SOUND_OUT_CTRL_PORT,
              WS_SOUND_OUT_CTRL_SPEAKER_ENABLE |

@@ -73,7 +73,8 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
             swan_core_request_scene(SWAN_SCENE_TITLE, 0);
         }
         if ((frame->input->actions_pressed & (1u << SWAN_ACTION_RESET)) != 0) {
-            game_model_reset(&model); swan_core_invalidate();
+            game_model_reset(&model);
+            swan_core_reset_session();
         }
     }
 }

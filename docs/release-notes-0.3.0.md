@@ -21,8 +21,11 @@ inspection, and exact evidence hashes.
 
 Session reset now also resets the WonderSwan sound hardware after stopping the
 logical sequencer. The framework restores its wavetable and output routing but
-leaves the next commit silent, so post-reset WAVs do not inherit oscillator
-phase from earlier play.
+leaves every channel silent, giving reset evidence an exact history-independent
+audio boundary. WonderSwan does not expose its wavetable sample offset to
+software, so games that need bit-exact reset evidence must keep that boundary
+silent; explicitly restarting a wavetable song is deterministic at the
+sequencer level but cannot promise identical raw PCM phase across histories.
 
 ## Release with dependency evidence
 

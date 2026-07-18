@@ -57,10 +57,15 @@ the deterministic row/phase plus playing and paused flags; it never consults a
 wall clock and reset/stop clears the position bit-exactly.
 
 `swan_core_reset_session()` stops the logical sequencer before invoking an
-internal platform reset. On WonderSwan this resets oscillator phase, restores
-the framework wavetable address and speaker/headphone routing, and leaves every
-channel silent for the next commit. This keeps post-reset WAV output independent
-of prior audio history without exposing raw sound-register access to gameplay.
+internal platform reset. On WonderSwan this disables every wavetable channel,
+clears its volume and sequencer controls, restores the framework wavetable
+address and speaker/headphone routing, and leaves every channel silent for the
+next commit. The hardware does
+not expose wavetable sample offsets, so an explicitly restarted wavetable song
+cannot promise identical raw PCM phase across histories. Reset contracts that
+require bit-exact audio therefore declare `audio_expectation = "silent"` and
+keep the evidence window silent, without exposing raw sound-register access to
+gameplay.
 
 ## Resources and budgets
 

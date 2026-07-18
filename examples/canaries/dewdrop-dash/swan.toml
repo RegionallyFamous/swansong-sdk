@@ -2,7 +2,7 @@ schema_version = 1
 
 [sdk]
 version = "0.3.0"
-revision = "sha256:ee933570467d43faa7865cd06919b1de726715e197af9d6fa56a0b96443240fe"
+revision = "sha256:57be11ce9e05bc61e6bd5155c1cc86cdb151acbfe0c17e6776394ba4a06e44cc"
 
 [game]
 id = "dewdrop-dash"
@@ -109,5 +109,5 @@ id = "reset"
 title = "Deterministic reset"
 goal = "Collect a seed, reset, and recover the exact initial leaf state."
 plan = "tests/play/reset.json"
-required_checks = ["reset clears seed progress", "droplet and charge return to spawn values", "replay hashes match"]
-audio_expectation = "audible"
+required_checks = ["reset clears seed progress", "droplet and charge return to spawn values", "audio returns to exact silence", "replay hashes match"]
+audio_expectation = "silent"

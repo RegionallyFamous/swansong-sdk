@@ -9,8 +9,8 @@
   decoded, non-empty, hash-bound WAV inspection in every mode.
 - Added exact static audio pause/resume and deterministic sequencer row/phase
   reporting without a wall clock.
-- Made session reset clear WonderSwan oscillator phase after stopping the
-  logical sequencer, eliminating cross-history WAV drift.
+- Made session reset stop the logical sequencer, disable every WonderSwan
+  wavetable channel, and clear its volumes, producing an exact silent boundary.
 - Added deterministic SPDX 2.3, CycloneDX 1.6, and unsigned
   in-toto/SLSA-style release records, with fail-closed SDK and Wonderful
   dependency pins.

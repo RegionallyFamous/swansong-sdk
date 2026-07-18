@@ -35,6 +35,11 @@ class CanaryTests(unittest.TestCase):
                     {item.id for item in manifest.play_scenarios},
                     {"neutral", "interaction", "success", "failure", "reset"},
                 )
+                reset_scenario = next(
+                    item for item in manifest.play_scenarios if item.id == "reset"
+                )
+                if any(asset.type == "music" for asset in manifest.assets):
+                    self.assertEqual(reset_scenario.audio_expectation, "silent")
                 for scenario in manifest.play_scenarios:
                     load_plan(root, scenario.plan)
                 art_assets = [item for item in manifest.assets
@@ -47,6 +52,11 @@ class CanaryTests(unittest.TestCase):
                     self.assertEqual(image.height % 8, 0)
                 self.assertTrue((root / "ART_PROVENANCE.md").is_file())
                 self.assertFalse((root / "src/diagnostic_art.h").exists())
+                game_source = (root / "src/game.c").read_text()
+                self.assertGreaterEqual(
+                    game_source.count("swan_core_reset_session();"), 2,
+                    "scene entry and in-game reset must both reset SDK session state",
+                )
 
     def test_portable_canary_models_compile_and_pass_without_sdk_linkage(self) -> None:
         compiler = os.environ.get("CC", "cc")
