@@ -31,7 +31,7 @@ jobs:
           cd /tmp
           python -P -c 'import importlib.metadata, swansong_sdk; assert swansong_sdk.__version__ == importlib.metadata.version("swansong-sdk")'
           python -P -m unittest discover -s "$GITHUB_WORKSPACE/tests/python" -v
-          for recipe in arcade-action menu-puzzle grid-tactics; do
+          for recipe in arcade-action menu-puzzle grid-tactics utility-app; do
             swan new "wheel-$recipe" --template "$recipe" --directory "/tmp/wheel-$recipe"
             swan assets --project "/tmp/wheel-$recipe/swan.toml"
             swan test --project "/tmp/wheel-$recipe/swan.toml"
@@ -55,7 +55,7 @@ jobs:
       image: cbrzeszczot/wonderful@sha256:1bd074214c0592a5fca3f26ce0c47d3a809f48e83f68705189fe30c78e75435e
     strategy:
       matrix:
-        recipe: [arcade-action, menu-puzzle, grid-tactics]
+        recipe: [arcade-action, menu-puzzle, grid-tactics, utility-app]
     steps:
       - uses: actions/checkout@v6
       - name: Install Python and host compiler
