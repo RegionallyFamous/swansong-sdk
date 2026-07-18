@@ -39,12 +39,6 @@ def validate_plan(plan: object, path: Path) -> dict[str, Any]:
     first = events[0]
     if first["frameIndex"] != 0 or first["inputs"]:
         raise PlanError(f"play plan must begin with a neutral frame 0 event: {path}")
-    for index in range(len(events) - 2):
-        press, release, following = events[index:index + 3]
-        if (press["inputs"] and not release["inputs"] and
-                release["frameIndex"] == press["frameIndex"] + 1 and
-                following["inputs"] and following["frameIndex"] < press["frameIndex"] + 3):
-            raise PlanError(f"play plan press at frame {press['frameIndex']} needs two neutral frames: {path}")
     return plan
 
 

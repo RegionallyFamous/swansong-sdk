@@ -6,13 +6,27 @@
   "required": ["schema_version", "game", "cartridge", "controls", "scenes", "budgets", "resources"],
   "properties": {
     "schema_version": {"const": 1},
+    "sdk": {
+      "type": "object",
+      "required": ["version", "revision"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
+        },
+        "revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
     "game": {
       "type": "object",
       "required": ["id", "title", "template", "hardware", "orientation", "initial_scene"],
       "properties": {
         "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
         "title": {"type": "string", "minLength": 1},
-        "version": {"type": "string", "minLength": 1},
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
+        },
         "template": {"enum": ["arcade-action", "menu-puzzle", "grid-tactics"]},
         "hardware": {"enum": ["color-required", "mono-compatible"]},
         "orientation": {"enum": ["horizontal", "vertical"]},

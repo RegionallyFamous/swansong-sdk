@@ -50,6 +50,13 @@ class PngTests(unittest.TestCase):
             with self.assertRaisesRegex(PNGError, "CRC"):
                 read_png(path)
 
+    def test_rejects_truncated_chunk_without_struct_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "truncated.png"
+            path.write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR")
+            with self.assertRaisesRegex(PNGError, "truncated PNG chunk"):
+                read_png(path)
+
 
 if __name__ == "__main__":
     unittest.main()

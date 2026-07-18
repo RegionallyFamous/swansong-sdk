@@ -16,6 +16,8 @@ class ManifestTests(unittest.TestCase):
                 project = create_project(f"test-{recipe}", recipe, root / recipe)
                 manifest = load_manifest(project / "swan.toml")
                 self.assertEqual(manifest.template, recipe)
+                self.assertEqual(manifest.sdk_version, "0.2.0")
+                self.assertRegex(manifest.sdk_revision or "", r"^sha256:[0-9a-f]{64}$")
                 self.assertGreaterEqual(len(manifest.play_scenarios), 4)
                 self.assertEqual(manifest.rom_name, f"test_{recipe.replace('-', '_')}.wsc")
 
@@ -32,6 +34,26 @@ class ManifestTests(unittest.TestCase):
             path = project / "swan.toml"
             path.write_text(path.read_text().replace('left = ["X4"]', 'left = ["JOYSTICK"]'))
             with self.assertRaisesRegex(ManifestError, "unknown inputs"):
+                load_manifest(path)
+
+    def test_rejects_release_version_path_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project(
+                "unsafe-version", "menu-puzzle", Path(temporary) / "project"
+            )
+            path = project / "swan.toml"
+            path.write_text(path.read_text().replace(
+                'version = "0.1.0"', 'version = "../../escape"', 1
+            ))
+            with self.assertRaisesRegex(ManifestError, "semantic version"):
+                load_manifest(path)
+
+    def test_rejects_invalid_sdk_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project("bad-sdk-pin", "menu-puzzle", Path(temporary) / "project")
+            path = project / "swan.toml"
+            path.write_text(path.read_text().replace("revision = \"sha256:", "revision = \"git:"))
+            with self.assertRaisesRegex(ManifestError, "sdk.revision"):
                 load_manifest(path)
 
     def test_rejects_more_than_eight_mib(self) -> None:

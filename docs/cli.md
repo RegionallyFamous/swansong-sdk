@@ -59,3 +59,156 @@ Loads a declared fresh-boot frame plan and sends it exclusively to SwanSong's
 evidence, verifies an identical second replay by default, and stores the media
 under `build/swansong`. `--no-verify-replay` is intended only for interactive
 diagnosis and must not be used for an acceptance result.
+
+## swan doctor
+
+Usage: swan doctor [--project PATH] [--timeout SECONDS] [--json]
+
+Runs a read-only environment audit. Doctor validates Python 3.11+, the complete
+SDK payload and matching Python/runtime versions, safe project/source/asset and
+play-plan paths, the manifest and its content-addressed SDK pin, the generated wfconfig.toml, the pinned
+Wonderful wswan/medium tools, and SwanSong's JSON-RPC initialize interface. It
+exits nonzero if any check fails.
+
+The JSON form emits one deterministic swansong-doctor-report-v1 object with
+an ok boolean and ordered checks. Each check has a stable id, status, message,
+and optional details object. Reports contain no clock time or measured
+duration, so Desktop and CI can consume the contract without parsing prose.
+
+## swan dev
+
+Usage: swan dev [--project PATH] [--scenario ID] [--once]
+
+Builds the project, executes a declared scenario through the existing
+swan play contract, then polls swan.toml, Makefile, src, assets, tests, and
+every declared asset source. Changes are debounced; generated build and release
+outputs are excluded to prevent rebuild loops. The default scenario is
+interaction, or the first declared scenario. Every rebuild and replay has a
+bounded --timeout.
+
+--once performs one build/replay and exits. --poll-cycles N bounds the watcher
+by filesystem polls. --test-mode removes sleeps and defaults to zero poll
+cycles, ensuring an automated invocation cannot hang. Polling behavior is
+otherwise controlled with --poll-interval and --debounce.
+
+The JSON form streams deterministic JSON Lines. Every line uses
+swansong-dev-event-v1 and includes sequence, type, project, and scenario plus
+event-specific changed, gate, status, builds, or pollCycles fields. Sequence
+numbers start at zero for each invocation. Events deliberately omit timestamps
+and durations.
+
+## swan scenario-record
+
+Usage: swan scenario-record --project PATH --input-log LOG --output PLAN [--json]
+
+Converts SwanSong Desktop's actual `swan-song-input-frame-log-v2` capture into
+an editable exact-frame plan. The command refuses dropped or noncontiguous
+frames, normalizes controls, compresses unchanged inputs, preserves a neutral
+fresh boot, and writes `swan-song-frame-input-plan-v1`. JSON output uses
+`swansong-scenario-record-report-v1`.
+
+## swan evidence-diff
+
+Usage: swan evidence-diff --before DIR --after DIR [--json]
+
+Compares both directories' `frame.png`, `audio.wav`, and `evidence.json`.
+Pixels and uncompressed PCM samples are decoded and measured; hashes are only
+identity metadata. Tolerance flags cover channel delta, changed-pixel ratio,
+sample delta, changed-sample ratio, and RMS delta. `--fail-on-difference`
+turns a meaningful change into a regression gate. JSON uses
+`swansong-evidence-diff-v1`.
+
+## swan fuzz
+
+Usage: swan fuzz --project PATH --seed N --cases N --frames N [--json]
+
+Generates deterministic valid input plans, runs a neutral baseline and every
+case through SwanSong, and requires an identical fresh-boot replay for each.
+Crashes, execution failures, and reset divergence fail the run. A case ending
+on the neutral raster is marked for PNG/WAV review, not automatically called a
+dead end. A transport-clean run returns `review`, never `pass`, until a person
+or game-playing agent inspects its PNG/WAV evidence. `--generate-only` is an
+offline plan-preview mode and never claims a ROM verdict. JSON uses
+`swansong-fuzz-report-v1`.
+
+## swan profile
+
+Usage: swan profile --project PATH [--trace TRACE.json] [--json]
+
+Combines the manifest and generated resource report with an optional exported
+frame trace. It reports tile and palette ownership, visible sprites,
+per-scanline pressure, dirty regions, and frame-time budgets using
+`swansong-profile-report-v1`. Static values remain useful when the engine has
+not exported a trace; the report states how many frames it actually analyzed.
+
+## swan optimize
+
+Usage: swan optimize --project PATH [--asset ID] [--output REPORT] [--json]
+
+Previews exact and flip-aware tile deduplication, deterministic four-color
+palette reduction, and a mono PNG variant without modifying source art. Empty
+projects return a valid zero-asset report. The artist-reviewed preview uses
+`swansong-asset-optimization-report-v1`.
+
+## swan lab
+
+Usage: swan lab --project PATH [--case all|save|rtc] [--rtc-seed UNIX] [--json]
+
+Runs the deterministic two-slot save journal and boot-time RTC laboratory.
+Cases cover empty media, corrupt newest data, interrupted commit, schema and
+capacity errors, invalid BCD, unavailable RTC, power loss, and time travel at
+a new boot boundary. This is a runtime-contract model, not an emulator; JSON
+uses `swansong-laboratory-report-v1`.
+
+## swan release
+
+Usage: swan release [--project PATH] [--output PATH] [--notes PATH] [--json]
+
+Runs, in order, the assets, build, host-test, JSON resource-report, and every
+declared SwanSong play gate. Each child command is invoked without a shell and
+with a timeout. A failed, timed-out, malformed, or missing gate stops the
+release before packaging.
+
+Each play gate must also have `build/swansong/<scenario>/observation.json` using
+`swan-song-evidence-observation-v1`. The record binds the ROM, PNG, and WAV
+hashes, names an observer, asserts PNG inspection, asserts WAV inspection when
+the scenario declares audio, records a `pass` verdict, and has one non-empty
+observation for every manifest `required_checks` entry. Only a person or
+game-playing agent that inspected the current media should create this record;
+execution success and changing hashes cannot create it automatically.
+
+On success, Release creates a ZIP containing the Color ROM, the mono validation
+ROM when present, the resource report, release notes, PNG/WAV/JSON evidence for
+each declared scenario, its inspected observation record, pinned SDK/toolchain
+provenance, and sorted SHA-256 checksums. SDK provenance includes both the
+semantic version and deterministic payload revision, and Release refuses a
+resolved SDK that differs from `[sdk]` in `swan.toml`. PNG and WAV files are fully decoded
+before acceptance. ZIP members are sorted
+and use a fixed timestamp and mode, making unchanged inputs byte-identical.
+--output accepts a ZIP filename or destination directory. --notes supplies
+Markdown; otherwise the SDK generates deterministic notes from the manifest.
+
+The JSON form emits one swansong-release-report-v1 object with ok, project and
+version, ordered gates, sorted artifact hashes, package path, and package
+SHA-256. A failed JSON invocation emits the same schema with ok false, a stable
+error code, and no package.
+
+An observation record has this shape; hashes and check names must match the
+fresh SwanSong evidence and manifest exactly:
+
+```json
+{
+  "schema": "swan-song-evidence-observation-v1",
+  "scenario": "interaction",
+  "verdict": "pass",
+  "pngInspected": true,
+  "wavInspected": false,
+  "observer": "release playtester",
+  "romSHA256": "...",
+  "capturePNG_SHA256": "...",
+  "finalWindowWAVSHA256": "...",
+  "requiredChecks": {
+    "cursor visibly moved": "Cursor moved one cell right after X2."
+  }
+}
+```

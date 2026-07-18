@@ -13,12 +13,20 @@ from swansong_sdk.swansong import SwanSongError, play
 
 SERVER = r'''
 import base64
+import io
 import json
 import os
 import sys
+import wave
 
-png = b"\x89PNG\r\n\x1a\nfixture"
-wav = b"RIFF" + (4).to_bytes(4, "little") + b"WAVEfixture"
+png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+wav_buffer = io.BytesIO()
+with wave.open(wav_buffer, "wb") as output:
+    output.setnchannels(2)
+    output.setsampwidth(2)
+    output.setframerate(48000)
+    output.writeframes(b"\0" * 16)
+wav = wav_buffer.getvalue()
 for line in sys.stdin:
     request = json.loads(line)
     if request["method"] == "initialize":
@@ -37,6 +45,22 @@ for line in sys.stdin:
                 ],
             }
     print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
+'''
+
+HANGING_SERVER = r'''
+import sys
+import time
+for line in sys.stdin:
+    time.sleep(10)
+'''
+
+PARTIAL_LINE_SERVER = r'''
+import sys
+import time
+for line in sys.stdin:
+    sys.stdout.write('{"jsonrpc":')
+    sys.stdout.flush()
+    time.sleep(10)
 '''
 
 
@@ -70,6 +94,36 @@ class SwanSongTests(unittest.TestCase):
             with mock.patch.dict(os.environ, environment, clear=False):
                 with self.assertRaisesRegex(SwanSongError, "refusing non-SwanSong"):
                     play(rom, {}, output=root / "evidence")
+
+    def test_times_out_and_terminates_hung_swansong_server(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            server = root / "hanging.py"
+            server.write_text(HANGING_SERVER)
+            rom = root / "game.wsc"
+            rom.write_bytes(b"ROM")
+            with mock.patch.dict(
+                os.environ,
+                {"SWANSONG_MCP_COMMAND": f"{sys.executable} {server}"},
+                clear=False,
+            ):
+                with self.assertRaisesRegex(SwanSongError, "timed out"):
+                    play(rom, {}, output=root / "evidence", timeout=0.05)
+
+    def test_partial_json_line_cannot_bypass_deadline(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            server = root / "partial.py"
+            server.write_text(PARTIAL_LINE_SERVER)
+            rom = root / "game.wsc"
+            rom.write_bytes(b"ROM")
+            with mock.patch.dict(
+                os.environ,
+                {"SWANSONG_MCP_COMMAND": f"{sys.executable} {server}"},
+                clear=False,
+            ):
+                with self.assertRaisesRegex(SwanSongError, "timed out"):
+                    play(rom, {}, output=root / "evidence", timeout=0.05)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ cd parcel-run
 swan assets
 swan test
 swan build
+swan doctor
 ```
 
 `swan assets` validates `swan.toml` and writes only derived files:
@@ -148,3 +149,22 @@ The CLI replays the complete frame plan twice from fresh boots. It rejects a
 non-SwanSong MCP server or divergent replay and writes `frame.png`, `audio.wav`,
 and `evidence.json` to `build/swansong/<scenario>/`. A human or game-playing
 agent must inspect the media before declaring the behavior correct.
+
+During development, swan dev rebuilds on source or declared-asset changes and
+replays the interaction contract through SwanSong. Use swan dev --once for a
+bounded build/play check.
+
+SwanSong Studio calls the same CLI contracts for the rest of the loop:
+`swan scenario-record` turns an exported input log into a checked-in frame
+plan; `swan optimize` previews source-art savings; `swan profile` combines
+declared budgets with an optional trace; `swan evidence-diff` compares decoded
+captures; `swan fuzz` executes seeded plans through SwanSong; and `swan lab`
+exercises the save/RTC contracts without consulting the host clock.
+
+When the project is ready, inspect each scenario's current PNG/WAV evidence and
+write its bound `swan-song-evidence-observation-v1` record beside the evidence.
+Then `swan release` reruns assets, build, host tests, resource budgets, and every
+declared play contract, verifies those inspected records, and writes a
+deterministic release ZIP under `dist`. CI and SwanSong Studio should use the
+versioned JSON forms of Doctor, Dev, and Release rather than parsing
+human-formatted output. The CLI reference defines the observation schema.

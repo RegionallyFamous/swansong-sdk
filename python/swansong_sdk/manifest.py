@@ -31,6 +31,11 @@ SAVE_CAPACITIES = {
 SAVE_TYPES = set(SAVE_CAPACITIES)
 C_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PROJECT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+PROJECT_VERSION = re.compile(
+    r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+    r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
+)
+SDK_REVISION = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ManifestError(ValueError):
@@ -92,6 +97,8 @@ class Manifest:
     hardware: str
     orientation: str
     initial_scene: str
+    sdk_version: str | None
+    sdk_revision: str | None
     game_id: int
     publisher_id: int
     cartridge_version: int
@@ -162,6 +169,8 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
         raise ManifestError("game.id must be lowercase kebab-case")
     title = _string(game, "title", context="game")
     version = _string(game, "version", context="game", default="0.1.0")
+    if not PROJECT_VERSION.fullmatch(version):
+        raise ManifestError("game.version must be a path-safe semantic version such as 1.2.3")
     template = _string(game, "template", context="game")
     hardware = _string(game, "hardware", context="game", default="color-required")
     if hardware not in HARDWARE:
@@ -171,6 +180,21 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
         raise ManifestError(f"game.orientation must be one of {sorted(ORIENTATIONS)}")
     initial_scene = _string(game, "initial_scene", context="game")
     _identifier(initial_scene, "game.initial_scene")
+
+    sdk = _table(data, "sdk")
+    sdk_version_raw = sdk.get("version")
+    sdk_revision_raw = sdk.get("revision")
+    if (sdk_version_raw is None) != (sdk_revision_raw is None):
+        raise ManifestError("sdk.version and sdk.revision must be declared together")
+    sdk_version: str | None = None
+    sdk_revision: str | None = None
+    if sdk_version_raw is not None:
+        sdk_version = _string(sdk, "version", context="sdk")
+        if not PROJECT_VERSION.fullmatch(sdk_version):
+            raise ManifestError("sdk.version must be a semantic version such as 0.2.0")
+        sdk_revision = _string(sdk, "revision", context="sdk")
+        if not SDK_REVISION.fullmatch(sdk_revision):
+            raise ManifestError("sdk.revision must be sha256 followed by 64 lowercase hex digits")
 
     cartridge = _table(data, "cartridge")
     game_id = _integer(cartridge, "game_id", context="cartridge", default=1)
@@ -309,7 +333,8 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
 
     return Manifest(
         manifest_path.parent, project_id, title, version, template, hardware,
-        orientation, initial_scene, game_id, publisher_id, cartridge_version,
+        orientation, initial_scene, sdk_version, sdk_revision,
+        game_id, publisher_id, cartridge_version,
         save_type, save_bytes, rtc, controls, tuple(scenes), tuple(assets),
         tuple(scenarios), budgets, resources,
     )

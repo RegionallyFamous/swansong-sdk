@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from swansong_sdk.cli import _parse_linked_usage, main
+from swansong_sdk.operations import OperationsError
 
 
 class CliTests(unittest.TestCase):
@@ -69,6 +71,139 @@ Cartridge ROM    10553  120519    92%
             with redirect_stderr(StringIO()):
                 self.assertEqual(main(["new", "refuse-me", "--directory", str(target)]), 2)
             self.assertEqual((target / "keep").read_text(), "mine")
+
+    def test_doctor_json_uses_versioned_contract_and_exit_status(self) -> None:
+        report = {"schema": "swansong-doctor-report-v1", "ok": False, "checks": []}
+        output = StringIO()
+        with mock.patch("swansong_sdk.cli.doctor_report", return_value=report):
+            with redirect_stdout(output):
+                self.assertEqual(main(["doctor", "--json"]), 2)
+        self.assertEqual(json.loads(output.getvalue()), report)
+
+    def test_dev_json_streams_versioned_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "dev-game"
+            with redirect_stdout(StringIO()):
+                self.assertEqual(main([
+                    "new", "dev-game", "--template", "menu-puzzle",
+                    "--directory", str(project),
+                ]), 0)
+
+            def session(unused_manifest, **kwargs):
+                event = {
+                    "schema": "swansong-dev-event-v1", "sequence": 0,
+                    "type": "stop", "project": "dev-game", "scenario": "interaction",
+                    "status": "passed", "builds": 1, "pollCycles": 0,
+                }
+                kwargs["sink"](event)
+                return event
+
+            output = StringIO()
+            with mock.patch("swansong_sdk.cli.development_session", side_effect=session):
+                with redirect_stdout(output):
+                    self.assertEqual(main([
+                        "dev", "--project", str(project / "swan.toml"),
+                        "--once", "--json",
+                    ]), 0)
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(events[0]["schema"], "swansong-dev-event-v1")
+
+    def test_dev_json_failure_keeps_sequence_monotonic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "dev-failure"
+            with redirect_stdout(StringIO()):
+                self.assertEqual(main([
+                    "new", "dev-failure", "--template", "menu-puzzle",
+                    "--directory", str(project),
+                ]), 0)
+
+            def session(unused_manifest, **kwargs):
+                kwargs["sink"]({
+                    "schema": "swansong-dev-event-v1", "sequence": 4,
+                    "type": "gate", "project": "dev-failure",
+                    "scenario": "interaction", "status": "failed",
+                })
+                raise OperationsError("build failed")
+
+            output = StringIO()
+            with mock.patch("swansong_sdk.cli.development_session", side_effect=session):
+                with redirect_stdout(output):
+                    self.assertEqual(main([
+                        "dev", "--project", str(project / "swan.toml"),
+                        "--once", "--json",
+                    ]), 2)
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual([item["sequence"] for item in events], [4, 5])
+            self.assertEqual(events[-1]["type"], "error")
+
+    def test_release_json_uses_versioned_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "release-game"
+            with redirect_stdout(StringIO()):
+                self.assertEqual(main([
+                    "new", "release-game", "--template", "menu-puzzle",
+                    "--directory", str(project),
+                ]), 0)
+            report = {
+                "schema": "swansong-release-report-v1", "ok": True,
+                "project": "release-game", "version": "0.1.0",
+                "package": str(project / "release.zip"), "packageSha256": "abc",
+                "gates": [], "artifacts": [],
+            }
+            output = StringIO()
+            with mock.patch("swansong_sdk.cli.release_project", return_value=report):
+                with redirect_stdout(output):
+                    self.assertEqual(main([
+                        "release", "--project", str(project / "swan.toml"), "--json",
+                    ]), 0)
+            self.assertEqual(json.loads(output.getvalue()), report)
+
+    def test_release_json_failure_stays_machine_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "failed-release"
+            with redirect_stdout(StringIO()):
+                self.assertEqual(main([
+                    "new", "failed-release", "--template", "menu-puzzle",
+                    "--directory", str(project),
+                ]), 0)
+            output = StringIO()
+            with mock.patch(
+                "swansong_sdk.cli.release_project",
+                side_effect=RuntimeError("unexpected implementation error"),
+            ):
+                with self.assertRaises(RuntimeError):
+                    main(["release", "--project", str(project / "swan.toml"), "--json"])
+            with mock.patch(
+                "swansong_sdk.cli.release_project",
+                side_effect=OperationsError("test gate failed"),
+            ):
+                with redirect_stdout(output):
+                    self.assertEqual(main([
+                        "release", "--project", str(project / "swan.toml"), "--json",
+                    ]), 2)
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["schema"], "swansong-release-report-v1")
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["error"]["code"], "release-gate-failed")
+            self.assertEqual(set(report), {
+                "artifacts", "error", "gates", "ok", "package",
+                "packageSha256", "project", "schema", "sdkRevision", "sdkVersion",
+                "toolchainLockSha256", "version",
+            })
+
+    def test_release_manifest_failure_uses_complete_report_shape(self) -> None:
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main([
+                "release", "--project", "/definitely/missing/swan.toml", "--json",
+            ]), 2)
+        report = json.loads(output.getvalue())
+        self.assertEqual(set(report), {
+            "artifacts", "error", "gates", "ok", "package",
+            "packageSha256", "project", "schema", "sdkRevision", "sdkVersion",
+            "toolchainLockSha256", "version",
+        })
+        self.assertIsNone(report["project"])
 
 
 if __name__ == "__main__":
