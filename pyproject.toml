@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swansong-sdk"
-version = "0.3.0"
+version = "0.3.1"
 description = "Deterministic WonderSwan game framework tooling"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -77,6 +77,7 @@ where = ["python"]
   "docs/getting-started.md",
   "docs/manifest.md",
   "docs/release-notes-0.3.0.md",
+  "docs/release-notes-0.3.1.md",
   "docs/supply-chain.md",
   "docs/swansong-desktop-integration.md",
   "docs/visual-authoring.md",

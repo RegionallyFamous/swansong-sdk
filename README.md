@@ -72,7 +72,7 @@ See [Getting started](docs/getting-started.md), the
 [SwanSong Desktop integration contract](docs/swansong-desktop-integration.md).
 Framework contributors should also follow the [feedback loop](docs/framework-feedback-loop.md)
 and [contribution guide](AGENTS.md). Release engineers should read the
-[supply-chain contract](docs/supply-chain.md) and [0.3 release notes](docs/release-notes-0.3.0.md).
+[supply-chain contract](docs/supply-chain.md) and [0.3.1 release notes](docs/release-notes-0.3.1.md).
 
 ## Status
 

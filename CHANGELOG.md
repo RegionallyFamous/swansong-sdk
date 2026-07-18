@@ -1,5 +1,13 @@
 # SwanSong SDK changelog
 
+## 0.3.1 — 2026-07-18
+
+- Fixed `swan doctor` timing out after a valid initialize response from a
+  normal long-lived SwanSong MCP server.
+- Unified Doctor's probe with the bounded line-oriented MCP response reader,
+  while retaining response identity checks, timeouts, redacted command details,
+  and process-group cleanup.
+
 ## 0.3.0 — 2026-07-18
 
 - Added deterministic failure-plan minimization and read-only replay timelines.

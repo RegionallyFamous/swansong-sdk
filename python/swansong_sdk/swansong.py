@@ -20,7 +20,9 @@ from .png2bpp import PNGError, read_png
 
 
 class SwanSongError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, returncode: int | None = None) -> None:
+        super().__init__(message)
+        self.returncode = returncode
 
 
 def server_command() -> list[str]:
@@ -61,7 +63,8 @@ def _available_stderr(process: subprocess.Popen[bytes], limit: int = 8192) -> st
 
 
 def _exchange(process: subprocess.Popen[bytes], request: dict[str, Any],
-              deadline: float, buffer: bytearray) -> dict[str, Any]:
+              deadline: float, buffer: bytearray, *,
+              raise_rpc_error: bool = True) -> dict[str, Any]:
     if process.stdin is None or process.stdout is None:
         raise SwanSongError("SwanSong MCP did not open standard I/O")
     process.stdin.write(
@@ -72,12 +75,16 @@ def _exchange(process: subprocess.Popen[bytes], request: dict[str, Any],
         while b"\n" in buffer:
             line, _, remainder = buffer.partition(b"\n")
             buffer[:] = remainder
+            if len(line) > 4 * 1024 * 1024:
+                raise SwanSongError("SwanSong MCP response exceeded the 4 MiB line limit")
             try:
                 response = json.loads(line)
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue
+            if not isinstance(response, dict):
+                continue
             if response.get("id") == request.get("id"):
-                if "error" in response:
+                if "error" in response and raise_rpc_error:
                     raise SwanSongError(f"SwanSong MCP error: {response['error']}")
                 return response
         remaining = deadline - time.monotonic()
@@ -90,10 +97,83 @@ def _exchange(process: subprocess.Popen[bytes], request: dict[str, Any],
         chunk = os.read(descriptor, 65536)
         if not chunk:
             error = _available_stderr(process)
-            raise SwanSongError(f"SwanSong MCP closed before responding: {error.strip()}")
+            returncode = process.poll()
+            raise SwanSongError(
+                f"SwanSong MCP closed before responding: {error.strip()}",
+                returncode=returncode,
+            )
         buffer.extend(chunk)
         if len(buffer) > 4 * 1024 * 1024:
             raise SwanSongError("SwanSong MCP response exceeded the 4 MiB line limit")
+
+
+def _close_process(process: subprocess.Popen[bytes], *, grace: float) -> None:
+    if process.stdin:
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+    if process.poll() is None and grace > 0:
+        try:
+            process.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=2)
+    if process.stdout:
+        process.stdout.close()
+    if process.stderr:
+        process.stderr.close()
+
+
+def probe_server(command: list[str], *, cwd: Path, timeout: float,
+                 client_name: str, client_version: str) -> dict[str, Any]:
+    """Perform one bounded initialize exchange with a line-oriented MCP server."""
+    if timeout <= 0:
+        raise SwanSongError("SwanSong timeout must be greater than zero")
+    if not command or not command[0]:
+        raise SwanSongError("refusing to run an empty SwanSong MCP command")
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    except FileNotFoundError as exc:
+        raise SwanSongError(
+            f"SwanSong MCP command is not installed: {command[0]}"
+        ) from exc
+    except OSError as exc:
+        raise SwanSongError(f"could not run SwanSong MCP command {command[0]}: {exc}") from exc
+    try:
+        return _exchange(process, {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": client_name, "version": client_version},
+            },
+        }, time.monotonic() + timeout, bytearray(), raise_rpc_error=False)
+    finally:
+        # MCP servers are expected to remain alive. Once the matching response
+        # arrives, terminate this private probe process instead of waiting for EOF.
+        _close_process(process, grace=0)
 
 
 def _call(process: subprocess.Popen[bytes], request_id: int, rom: Path,
@@ -190,27 +270,4 @@ def play(rom: Path, plan: dict[str, Any], *, output: Path,
         (output / "evidence.json").write_text(json.dumps(structured, indent=2, sort_keys=True) + "\n")
         return structured
     finally:
-        if process.stdin:
-            try:
-                process.stdin.close()
-            except BrokenPipeError:
-                pass
-        try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.wait(timeout=2)
-        if process.stdout:
-            process.stdout.close()
-        if process.stderr:
-            process.stderr.close()
+        _close_process(process, grace=2)

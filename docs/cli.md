@@ -70,6 +70,12 @@ play-plan paths, the manifest and its content-addressed SDK pin, the generated w
 Wonderful wswan/medium tools, and SwanSong's JSON-RPC initialize interface. It
 exits nonzero if any check fails.
 
+The SwanSong probe sends one newline-terminated initialize request and accepts
+the matching response without requiring the long-lived MCP server to exit. The
+response deadline is bounded by `--timeout`, and cleanup escalates from
+termination to a forced stop; malformed, errored, silent, and non-SwanSong
+responders still fail the check.
+
 The JSON form emits one deterministic swansong-doctor-report-v1 object with
 an ok boolean and ordered checks. Each check has a stable id, status, message,
 and optional details object. Reports contain no clock time or measured
