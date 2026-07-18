@@ -44,6 +44,13 @@ void swan_platform_gfx_put_tile(uint8_t layer, uint8_t x, uint8_t y,
     screen->row[y].cell[x] = attr;
 }
 
+void swan_platform_gfx_fill(uint8_t layer, uint8_t x, uint8_t y,
+                            uint8_t width, uint8_t height,
+                            swan_tile_attr_t attr) {
+    ws_screen_t ws_iram *screen = layer == 0 ? &wse_screen1 : &wse_screen2;
+    ws_screen_fill_tiles(screen, attr, x, y, width, height);
+}
+
 swan_tile_attr_t swan_platform_gfx_get_tile(uint8_t layer, uint8_t x,
                                             uint8_t y) {
     ws_screen_t ws_iram *screen = layer == 0 ? &wse_screen1 : &wse_screen2;

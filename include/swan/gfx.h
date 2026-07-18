@@ -108,6 +108,7 @@ void swan_gfx_set_sprites_enabled(bool enabled);
 bool swan_gfx_sprites_enabled(void);
 void swan_gfx_present(void);
 bool swan_gfx_dirty(void);
+/* Computes exact resource and scanline diagnostics on demand. */
 const swan_gfx_usage_t *swan_gfx_usage(void);
 
 #endif

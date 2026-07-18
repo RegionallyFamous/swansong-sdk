@@ -17,6 +17,7 @@ static bool storage_ready;
 static uint8_t commit_frames;
 static utility_outcome_t commit_outcome;
 static bool commit_allow_empty;
+static bool scene_background_ready;
 
 static const swan_instrument_t SWAN_FAR utility_instruments[1] = {{
     {0, 1, 3, 6, 10, 14, 10, 6, 3, 1, 0, 0, 0, 0, 0, 0}, 0, 0
@@ -94,6 +95,7 @@ void swan_game_boot(void) {
 
 void swan_scene_enter(swan_scene_id_t scene, uint16_t argument) {
     (void)argument;
+    scene_background_ready = false;
     if (scene == SWAN_SCENE_EDITOR) swan_core_reset_session();
     swan_core_invalidate();
 }
@@ -159,7 +161,10 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
 
 void swan_scene_render(swan_scene_id_t scene) {
     uint8_t index;
-    swan_gfx_fill(0, 0, 0, 28, 18, SWAN_TILE_ATTR(1, 0));
+    if (!scene_background_ready) {
+        swan_gfx_fill(0, 0, 0, 28, 18, SWAN_TILE_ATTR(1, 0));
+        scene_background_ready = true;
+    }
     if (scene == SWAN_SCENE_TITLE) {
         swan_gfx_put_tile(0, 12, 8, SWAN_TILE_ATTR(4, 0));
         swan_gfx_put_tile(0, 14, 8, SWAN_TILE_ATTR(3, 0));
@@ -174,8 +179,10 @@ void swan_scene_render(swan_scene_id_t scene) {
         uint8_t x = (uint8_t)(5 + (index % UTILITY_TEXT_COLUMNS) * 4);
         uint8_t y = (uint8_t)(2 + (index / UTILITY_TEXT_COLUMNS) * 3);
         swan_gfx_put_tile(0, x, y, SWAN_TILE_ATTR(tile, 0));
-        if (index == model.text_cursor)
-            swan_gfx_put_tile(0, x, (uint8_t)(y + 1), SWAN_TILE_ATTR(4, 0));
+        swan_gfx_put_tile(
+            0, x, (uint8_t)(y + 1),
+            SWAN_TILE_ATTR(index == model.text_cursor ? 4 : 1, 0)
+        );
     }
     for (index = 0; index < UTILITY_SYMBOL_COUNT; ++index) {
         uint8_t column = (uint8_t)(index % UTILITY_GRID_COLUMNS);
@@ -184,12 +191,14 @@ void swan_scene_render(swan_scene_id_t scene) {
         swan_gfx_put_tile(0, (uint8_t)(9 + column * 3), (uint8_t)(9 + row * 2),
                           SWAN_TILE_ATTR(selected ? 5 : 4, 0));
     }
-    if (model.dirty)
-        swan_gfx_put_tile(0, 26, 1, SWAN_TILE_ATTR(3, 0));
+    swan_gfx_put_tile(0, 26, 1,
+                      SWAN_TILE_ATTR(model.dirty ? 3 : 1, 0));
     if (model.outcome != UTILITY_OUTCOME_EDITING) {
         uint8_t tile = model.outcome == UTILITY_OUTCOME_SAVED ? 2 :
             (model.outcome == UTILITY_OUTCOME_RESET ? 4 : 5);
         swan_gfx_fill(0, 24, 3, 3, 1, SWAN_TILE_ATTR(tile, 0));
+    } else {
+        swan_gfx_fill(0, 24, 3, 3, 1, SWAN_TILE_ATTR(1, 0));
     }
 }
 

@@ -200,6 +200,25 @@ group = "common"
                 subprocess.run(["make", "clean"], cwd=project, check=True, capture_output=True, text=True)
                 subprocess.run(["make", "test"], cwd=project, check=True, capture_output=True, text=True)
 
+    def test_recipes_preserve_runtime_and_render_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project(
+                "responsive-utility", "utility-app", Path(temporary) / "project"
+            )
+            makefile = (project / "Makefile").read_text()
+            game = (project / "src/game.c").read_text()
+            self.assertIn(
+                "$(SWANSONG_RUNTIME): $(SWANSONG_RUNTIME_SOURCES)", makefile
+            )
+            self.assertIn(
+                "$(ELF_STAGE1): $(OBJS) $(SWANSONG_RUNTIME)", makefile
+            )
+            self.assertEqual(
+                game.count("swan_gfx_fill(0, 0, 0, 28, 18"), 1
+            )
+            self.assertIn("if (!scene_background_ready)", game)
+            self.assertIn("model.dirty ? 3 : 1", game)
+
 
 if __name__ == "__main__":
     unittest.main()

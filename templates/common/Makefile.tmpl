@@ -12,6 +12,11 @@ ELF_STAGE1 := build/$(NAME)_stage1.elf
 ROM := $(NAME).wsc
 SWANSONG_RUNTIME_BUILD := $(abspath build/swansong-sdk-$(SWAN_GFX_HARDWARE_TILE_CAPACITY))
 SWANSONG_RUNTIME := $(SWANSONG_RUNTIME_BUILD)/$(TARGET)/libswan.a
+SWANSONG_RUNTIME_SOURCES := $(sort \
+	$(wildcard $(SWANSONG_SDK_DIR)/include/swan/*.h) \
+	$(wildcard $(SWANSONG_SDK_DIR)/src/*.c) \
+	$(wildcard $(SWANSONG_SDK_DIR)/src/*.h) \
+	$(SWANSONG_SDK_DIR)/mk/runtime-library.mk)
 
 INCLUDEDIRS := src build/generated/include $(SWANSONG_SDK_DIR)/include
 LIBDIRS := $(WF_ARCH_LIBDIRS)
@@ -25,7 +30,7 @@ CFLAGS += -std=gnu11 -Wall -Wextra -Werror -DSWAN_GFX_HARDWARE_TILE_CAPACITY=$(S
 LDFLAGS := -T$(WF_LDSCRIPT) $(LIBDIRSFLAGS) $(WF_ARCH_LDFLAGS) \
 	-Wl,--start-group -lwse -lwsx -lws -lc -Wl,--end-group
 
-.PHONY: all assets clean sdk-runtime test usage
+.PHONY: all assets clean test usage
 
 all: assets $(ROM)
 
@@ -36,10 +41,10 @@ $(ROM) $(ELF): $(ELF_STAGE1) wfconfig.toml
 	@mkdir -p build
 	$(BUILDROM) -o $(ROM) --output-elf $(ELF) $<
 
-sdk-runtime:
+$(SWANSONG_RUNTIME): $(SWANSONG_RUNTIME_SOURCES)
 	$(MAKE) -C $(SWANSONG_SDK_DIR) -f mk/runtime-library.mk TARGET=$(TARGET) BUILD_ROOT=$(SWANSONG_RUNTIME_BUILD) SWAN_GFX_HARDWARE_TILE_CAPACITY=$(SWAN_GFX_HARDWARE_TILE_CAPACITY) all
 
-$(ELF_STAGE1): $(OBJS) | sdk-runtime
+$(ELF_STAGE1): $(OBJS) $(SWANSONG_RUNTIME)
 	@mkdir -p build
 	$(CC) -r -o $@ $(OBJS) $(SWANSONG_RUNTIME) $(WF_CRT0) $(LDFLAGS)
 

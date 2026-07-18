@@ -22,3 +22,12 @@ Audio evidence now measures left/right energy, cue onset, silent-frame ratios,
 internal dropouts, clipped samples, and loop seams. Projects can opt into
 per-scenario limits without changing the existing exact PNG/WAV evidence
 contract.
+
+Normal frame presentation no longer performs a full tilemap and sprite
+profiling sweep. Resource diagnostics remain exact when requested through the
+profiler, while games keep their VBlank cadence during ordinary play. The
+WonderSwan backend also has a native rectangular tile-fill path, and the
+`utility-app` recipe preserves static scenery between updates instead of
+redrawing the whole screen after each button event. Generated Makefiles also
+track the resolved SDK runtime as a normal link dependency so adjacent SDK
+development cannot silently replay an older archive.

@@ -403,6 +403,10 @@ static void test_assets_and_gfx(void) {
     CHECK(swan_gfx_load_tiles(1023, data, 1));
     CHECK(swan_gfx_tile_index(SWAN_TILE_ATTR(1023, 7)) == 1023);
     CHECK(swan_gfx_fill(0, 0, 0, 4, 3, SWAN_TILE_ATTR(1, 0)));
+    CHECK(swan_gfx_get_tile(0, 0, 0) == SWAN_TILE_ATTR(1, 0));
+    CHECK(swan_gfx_get_tile(0, 3, 2) == SWAN_TILE_ATTR(1, 0));
+    CHECK(swan_gfx_get_tile(0, 4, 2) == 0);
+    CHECK(swan_gfx_get_tile(0, 3, 3) == 0);
     CHECK(swan_gfx_put_tile(1, 31, 31, SWAN_TILE_ATTR(1023, 7)));
     CHECK(swan_gfx_get_tile(1, 31, 31) == SWAN_TILE_ATTR(1023, 7));
     CHECK(!swan_gfx_put_tile(0, 32, 0, 0));

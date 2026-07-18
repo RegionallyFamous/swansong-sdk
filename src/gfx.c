@@ -138,8 +138,10 @@ bool swan_gfx_put_tile(uint8_t layer, uint8_t x, uint8_t y, swan_tile_attr_t att
 
 bool swan_gfx_fill(uint8_t layer, uint8_t x, uint8_t y, uint8_t width,
                    uint8_t height, swan_tile_attr_t attr) {
+#if !SWAN_GFX_DIRECT_HARDWARE
     uint8_t px;
     uint8_t py;
+#endif
     if (layer >= SWAN_GFX_LAYER_COUNT || width == 0 || height == 0 ||
         x >= SWAN_GFX_MAP_WIDTH || y >= SWAN_GFX_MAP_HEIGHT ||
         width > SWAN_GFX_MAP_WIDTH - x || height > SWAN_GFX_MAP_HEIGHT - y ||
@@ -147,15 +149,15 @@ bool swan_gfx_fill(uint8_t layer, uint8_t x, uint8_t y, uint8_t width,
         SWAN_ASSERT(false, SWAN_PANIC_RESOURCE_LIMIT);
         return false;
     }
+#if SWAN_GFX_DIRECT_HARDWARE
+    swan_platform_gfx_fill(layer, x, y, width, height, attr);
+#else
     for (py = y; py < (uint8_t)(y + height); ++py) {
         for (px = x; px < (uint8_t)(x + width); ++px) {
-#if SWAN_GFX_DIRECT_HARDWARE
-            swan_platform_gfx_put_tile(layer, px, py, attr);
-#else
             gfx.maps[layer][py][px] = attr;
-#endif
         }
     }
+#endif
     ++gfx.map_generation[layer];
     gfx.dirty = true;
     return true;
@@ -380,7 +382,6 @@ static void measure_usage(void) {
 }
 
 void swan_gfx_present(void) {
-    measure_usage();
     gfx.dirty = false;
 }
 

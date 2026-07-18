@@ -11,6 +11,12 @@
   first input before a game's fresh-boot safe point.
 - Expanded WAV evidence with stereo balance, cue onset, dropout, clipping, and
   loop-seam measurements plus optional per-scenario regression limits.
+- Removed full tilemap and sprite diagnostics from the normal frame-present
+  path, retaining exact on-demand profiler results without stalling gameplay.
+- Added native rectangular tile fills and taught the utility recipe to redraw
+  only its changing editor regions after a scene background is prepared.
+- Made generated projects relink whenever their pinned SDK runtime archive or
+  runtime sources change, including direct Makefile-based development.
 
 ## 0.3.1 — 2026-07-18
 
