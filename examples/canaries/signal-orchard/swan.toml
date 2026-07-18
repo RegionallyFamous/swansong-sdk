@@ -2,7 +2,7 @@ schema_version = 1
 
 [sdk]
 version = "0.4.0"
-revision = "sha256:1161301102ae6326a768ba6b536d58d307240d66a857e65f23989b523c7c6814"
+revision = "sha256:4a08d6fa29bf49947576292574d0d868003add6537e01aa0438c4b6eedb85ffe"
 
 [game]
 id = "signal-orchard"

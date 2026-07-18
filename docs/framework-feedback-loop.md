@@ -24,6 +24,12 @@ The first canaries produced two permanent rules:
 2. A scene invalidates graphics only after state changes or while declared
    animation is active. SwanSong inspection caught that unconditional recipe
    invalidation hid later interaction states even though host tests passed.
+3. Frame presentation never performs a whole-map or whole-sprite diagnostic
+   scan. Profiling is requested explicitly, static scenery is preserved, and
+   hardware-backed rectangle operations are preferred for bulk changes.
+   Scenario review compares scheduled SwanSong frames with the game's session
+   tick so a delivered button transition cannot be mistaken for a sampled
+   gameplay action when a slow renderer misses VBlanks.
 
 For each game, append measured ROM, RAM reservation, peak tiles, palettes,
 sprites, scanline sprites, and audio bytes to its review. If a limit cannot be

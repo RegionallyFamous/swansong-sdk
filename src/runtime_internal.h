@@ -45,6 +45,9 @@ void swan_platform_gfx_load_tiles(uint16_t first_tile,
                                   uint16_t tile_count);
 void swan_platform_gfx_put_tile(uint8_t layer, uint8_t x, uint8_t y,
                                 swan_tile_attr_t attr);
+void swan_platform_gfx_fill(uint8_t layer, uint8_t x, uint8_t y,
+                            uint8_t width, uint8_t height,
+                            swan_tile_attr_t attr);
 swan_tile_attr_t swan_platform_gfx_get_tile(uint8_t layer, uint8_t x,
                                             uint8_t y);
 void swan_platform_gfx_set_palette(uint8_t palette,
