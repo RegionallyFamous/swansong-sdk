@@ -31,6 +31,35 @@ For hand-authored or timestamped recordings, use `ScenarioRecording.record`,
 `edit`, `delete`, and `to_plan`. Timestamps are converted with an explicit
 rational refresh rate, avoiding platform-dependent floating-point rounding.
 
+## Minimize a reproducible failure
+
+`swansong_sdk.minimize.minimize_plan(...)` delta-reduces the effective frames
+of a validated exact-frame plan. Its evaluator returns a `FailureObservation`;
+the pure reducer never invokes an emulator, reads a clock, or uses randomness.
+The `swan minimize` adapter supplies an evaluator backed exclusively by
+SwanSong and a versioned `swansong-failure-predicate-v1` contract.
+
+Structured predicates bind an RFC 6901 path to an exact JSON value. Execution
+predicates bind the entire error message. The initial and final observations,
+canonical plan hashes, accepted reductions, cache use, and evaluation ceiling
+are retained in `swansong-minimize-report-v1`. Frame deletion is deterministic
+and keeps the neutral fresh-boot frame; per-frame chord atoms are minimized
+after timeline reduction.
+
+## Inspect a replay timeline
+
+`swansong_sdk.replay.build_replay_report(...)` creates
+`swansong-replay-report-v1` without running a ROM. It joins compact input
+segments, ordered checkpoint annotations, decoded evidence bindings, and
+optional declared trace summaries into sorted timeline points. Evidence media
+is fully decoded and content-hashed. Checkpoints cannot reference missing
+evidence, and unused evidence is listed explicitly.
+
+Trace summaries retain sorted scalar fields and counts for collections such as
+sprites or dirty regions. This keeps the report small enough for a Studio frame
+scrubber while preserving the original trace's canonical digest. The checked
+JSON contracts live under `schema/`.
+
 ## Compare SwanSong evidence
 
 `swansong_sdk.evidence.diff_evidence(...)` returns

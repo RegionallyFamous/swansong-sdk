@@ -107,6 +107,89 @@ frames, normalizes controls, compresses unchanged inputs, preserves a neutral
 fresh boot, and writes `swan-song-frame-input-plan-v1`. JSON output uses
 `swansong-scenario-record-report-v1`.
 
+## swan minimize
+
+Usage: swan minimize --project PATH --plan PLAN --predicate PREDICATE --output PLAN [--json]
+
+Delta-reduces a failing exact-frame input plan while preserving a declared,
+machine-checkable result. The predicate must use
+`swansong-failure-predicate-v1` and select one of two closed forms:
+
+- `structured-evidence` compares the value at an RFC 6901 JSON pointer with an
+  exact JSON value. Each candidate is run with SwanSong's normal bit-exact
+  replay verification.
+- `execution-error` compares the complete SwanSong error message with
+  `messageEquals`. Each candidate is executed twice and both errors must be
+  byte-identical. A timeout, transport failure, or different message therefore
+  cannot accidentally preserve an unrelated failure.
+
+Frame zero is immutable and remains neutral. The reducer expands the plan into
+effective frame input, applies deterministic delta debugging to remove frame
+chunks, removes individual chord inputs, and repeats until it is one-minimal or
+`--max-evaluations` is reached. Removing frames shifts later input earlier, so
+the result minimizes unnecessary waits as well as actions. The default limit is
+256 distinct candidates; the cache, accepted reductions, limit status, source
+and minimized digests, and exact observed results are recorded in
+`swansong-minimize-report-v1`.
+
+The source plan must already satisfy the predicate. The final candidate is
+fresh-boot verified once more before the output plan is written. Structured
+evidence is stored under `build/swansong/minimize` by default; use
+`--evidence-output` to select another directory and `--report` to persist the
+report. SwanSong is the only execution backend.
+
+Example structured-evidence predicate:
+
+```json
+{
+  "schema": "swansong-failure-predicate-v1",
+  "kind": "structured-evidence",
+  "path": "/failure/code",
+  "equals": "invalid-transition"
+}
+```
+
+## swan replay
+
+Usage: swan replay --project PATH (--plan PLAN | --scenario ID) [--checkpoints FILE] [--evidence ID=DIR] [--trace FILE] [--json]
+
+Builds a read-only frame timeline for SwanSong Studio, CI, or a game-playing
+agent. This command does not emulate or execute the cartridge—`swan play`
+remains the execution command. The report combines:
+
+- compact effective-input segments and indexed input-change points from a
+  validated `swan-song-frame-input-plan-v1`;
+- declared scenario goal, required checks, and audio requirement when
+  `--scenario` is used;
+- ordered `swansong-replay-checkpoints-v1` annotations;
+- one or more fully decoded PNG/WAV/structured evidence directories bound with
+  repeatable `--evidence ID=DIRECTORY`; and
+- optional per-frame trace summaries, with scalar fields retained and large
+  collections represented by counts.
+
+Checkpoint evidence IDs must resolve to supplied evidence. The report calls out
+unbound evidence, hashes the plan, trace, PNG, WAV, and structured evidence,
+and provides a sorted `timeline` suitable for a scrubber without expanding
+every unchanged frame. JSON uses `swansong-replay-report-v1`; `--output`
+writes the same deterministic report to a file.
+
+Checkpoint annotations use this contract:
+
+```json
+{
+  "schema": "swansong-replay-checkpoints-v1",
+  "checkpoints": [
+    {
+      "id": "movement-stops",
+      "frameIndex": 143,
+      "label": "Player stops responding",
+      "requiredCheck": "directional controls remain operational",
+      "evidence": ["failure"]
+    }
+  ]
+}
+```
+
 ## swan evidence-diff
 
 Usage: swan evidence-diff --before DIR --after DIR [--json]

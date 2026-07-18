@@ -69,7 +69,7 @@ where = ["python"]
   "mk/runtime-library.mk",
   "mk/swansong-runtime.mk",
 ]
-"share/swansong-sdk/schema" = ["schema/swan.schema.json"]
+"share/swansong-sdk/schema" = ["schema/*.json"]
 "share/swansong-sdk/docs" = [
   "docs/analysis-and-laboratories.md",
   "docs/cli.md",

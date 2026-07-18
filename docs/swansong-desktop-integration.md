@@ -34,6 +34,13 @@ When hosted inside Desktop, the executor may be injected directly instead of
 launching a second process, but the request and evidence schemas remain the
 same. No alternate emulator or acceptance path is permitted.
 
+For replay debugging, Desktop should invoke `swan replay --json` and render its
+ordered `timeline` and `inputSegments`; it should not reinterpret raw plans or
+evidence hashes. A recorded failing plan can be handed to `swan minimize` with
+a checked `swansong-failure-predicate-v1`. Progress UI may display the final
+`swansong-minimize-report-v1`, but cancellation must discard an unverified
+candidate rather than writing it as the minimized result.
+
 ## Distribution
 
 Desktop bundles a tagged SDK release, its schema, recipes, Python runtime, and

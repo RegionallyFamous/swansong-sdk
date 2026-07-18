@@ -18,8 +18,15 @@ class CliTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(main(["sdk-path"]), 0)
         root = Path(output.getvalue().strip())
-        for relative in ("include/swan/swan.h", "src/core.c", "mk/runtime-library.mk",
-                         "templates/common/Makefile.tmpl", "schema/swan.schema.json"):
+        for relative in (
+            "include/swan/swan.h", "src/core.c", "mk/runtime-library.mk",
+            "templates/common/Makefile.tmpl", "schema/swan.schema.json",
+            "schema/frame-input-plan.schema.json",
+            "schema/failure-predicate.schema.json",
+            "schema/minimize-report.schema.json",
+            "schema/replay-checkpoints.schema.json",
+            "schema/replay-report.schema.json",
+        ):
             self.assertTrue((root / relative).is_file(), relative)
 
     def test_parses_wonderful_linked_iram_usage(self) -> None:

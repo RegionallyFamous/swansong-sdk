@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/replay-checkpoints.schema.json",
+  "title": "SwanSong replay checkpoints v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "checkpoints"],
+  "properties": {
+    "schema": {"const": "swansong-replay-checkpoints-v1"},
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "frameIndex", "label"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+          "frameIndex": {"type": "integer", "minimum": 0},
+          "label": {"type": "string", "minLength": 1},
+          "requiredCheck": {"type": "string", "minLength": 1},
+          "evidence": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+          }
+        }
+      }
+    }
+  }
+}

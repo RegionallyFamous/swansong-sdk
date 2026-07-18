@@ -55,3 +55,16 @@ def load_plan(root: Path, relative: str) -> tuple[Path, dict[str, Any]]:
     except json.JSONDecodeError as exc:
         raise PlanError(f"invalid JSON play plan {path}: {exc}") from exc
     return path, validate_plan(raw, path)
+
+
+def load_plan_file(path: Path) -> tuple[Path, dict[str, Any]]:
+    """Load an explicitly selected plan without applying project-relative policy."""
+
+    resolved = path.resolve()
+    try:
+        raw = json.loads(resolved.read_text())
+    except FileNotFoundError as exc:
+        raise PlanError(f"play plan does not exist: {resolved}") from exc
+    except json.JSONDecodeError as exc:
+        raise PlanError(f"invalid JSON play plan {resolved}: {exc}") from exc
+    return resolved, validate_plan(raw, resolved)

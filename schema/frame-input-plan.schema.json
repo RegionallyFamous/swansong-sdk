@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/frame-input-plan.schema.json",
+  "title": "SwanSong exact-frame input plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "totalFrames", "events"],
+  "properties": {
+    "schema": {"const": "swan-song-frame-input-plan-v1"},
+    "totalFrames": {"type": "integer", "minimum": 1},
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frameIndex", "inputs"],
+          "properties": {
+            "frameIndex": {"const": 0},
+            "inputs": {"type": "array", "maxItems": 0}
+          }
+        }
+      ],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["frameIndex", "inputs"],
+        "properties": {
+          "frameIndex": {"type": "integer", "minimum": 1},
+          "inputs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": ["x1", "x2", "x3", "x4", "y1", "y2", "y3", "y4", "a", "b", "start"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

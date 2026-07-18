@@ -380,7 +380,12 @@ def doctor_report(project: str | Path | None = None, *, timeout: float = 5.0) ->
         root = sdk_root().resolve()
         required = (
             "include/swan/swan.h", "src/core.c", "mk/runtime-library.mk",
-            "schema/swan.schema.json", "templates/common/Makefile.tmpl",
+            "schema/swan.schema.json", "schema/frame-input-plan.schema.json",
+            "schema/failure-predicate.schema.json",
+            "schema/minimize-report.schema.json",
+            "schema/replay-checkpoints.schema.json",
+            "schema/replay-report.schema.json",
+            "templates/common/Makefile.tmpl",
             "toolchain.lock",
         )
         missing = [item for item in required if not (root / item).is_file()]
