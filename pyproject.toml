@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swansong-sdk"
-version = "0.2.0"
+version = "0.3.0"
 description = "Deterministic WonderSwan game framework tooling"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,7 +29,7 @@ package-dir = { "" = "python" }
 where = ["python"]
 
 [tool.setuptools.data-files]
-"share/swansong-sdk" = ["toolchain.lock"]
+"share/swansong-sdk" = ["CHANGELOG.md", "toolchain.lock"]
 "share/swansong-sdk/include/swan" = [
   "include/swan/assets.h",
   "include/swan/audio.h",
@@ -76,6 +76,8 @@ where = ["python"]
   "docs/framework-feedback-loop.md",
   "docs/getting-started.md",
   "docs/manifest.md",
+  "docs/release-notes-0.3.0.md",
+  "docs/supply-chain.md",
   "docs/swansong-desktop-integration.md",
   "docs/visual-authoring.md",
 ]

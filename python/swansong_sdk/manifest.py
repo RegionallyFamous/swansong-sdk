@@ -16,6 +16,7 @@ ASSET_TYPES = {
     "fullscreen", "tilemap", "spritesheet", "metatiles", "font",
     "music", "sfx",
 }
+AUDIO_EXPECTATIONS = {"audible", "silent", "any"}
 INPUTS = {"X1", "X2", "X3", "X4", "Y1", "Y2", "Y3", "Y4", "A", "B", "START"}
 SAVE_CAPACITIES = {
     "none": 0,
@@ -64,7 +65,12 @@ class PlayScenario:
     goal: str
     plan: str
     required_checks: tuple[str, ...]
-    audio: bool = False
+    audio_expectation: str = "any"
+
+    @property
+    def audio(self) -> bool:
+        """Compatibility view for v0.2 consumers that treated audio as boolean."""
+        return self.audio_expectation == "audible"
 
 
 @dataclass(frozen=True)
@@ -191,7 +197,7 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
     if sdk_version_raw is not None:
         sdk_version = _string(sdk, "version", context="sdk")
         if not PROJECT_VERSION.fullmatch(sdk_version):
-            raise ManifestError("sdk.version must be a semantic version such as 0.2.0")
+            raise ManifestError("sdk.version must be a semantic version such as 0.3.0")
         sdk_revision = _string(sdk, "revision", context="sdk")
         if not SDK_REVISION.fullmatch(sdk_revision):
             raise ManifestError("sdk.revision must be sha256 followed by 64 lowercase hex digits")
@@ -298,16 +304,30 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
         required_checks = _list_of_strings(item.get("required_checks", []), f"{context}.required_checks")
         if not required_checks:
             raise ManifestError(f"{context}.required_checks cannot be empty")
-        audio = item.get("audio", False)
-        if not isinstance(audio, bool):
+        legacy_audio = item.get("audio")
+        if legacy_audio is not None and not isinstance(legacy_audio, bool):
             raise ManifestError(f"{context}.audio must be true or false")
+        audio_expectation = item.get("audio_expectation")
+        if audio_expectation is None:
+            audio_expectation = "audible" if legacy_audio is True else "any"
+        elif (not isinstance(audio_expectation, str) or
+              audio_expectation not in AUDIO_EXPECTATIONS):
+            raise ManifestError(
+                f"{context}.audio_expectation must be audible, silent, or any"
+            )
+        if legacy_audio is not None:
+            legacy_expectation = "audible" if legacy_audio else "any"
+            if audio_expectation != legacy_expectation:
+                raise ManifestError(
+                    f"{context}.audio and audio_expectation conflict"
+                )
         scenarios.append(PlayScenario(
             scenario_id,
             _string(item, "title", context=context),
             _string(item, "goal", context=context),
             _string(item, "plan", context=context),
             required_checks,
-            audio,
+            audio_expectation,
         ))
 
     budget_table = _table(data, "budgets")

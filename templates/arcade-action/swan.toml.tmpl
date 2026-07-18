@@ -64,7 +64,7 @@ title = "Neutral boot"
 goal = "Reach a stable title screen after a fresh boot."
 plan = "tests/play/neutral.json"
 required_checks = ["title state is visually distinct", "frame is stable", "no crash or hang"]
-audio = true
+audio_expectation = "audible"
 
 [[play.scenarios]]
 id = "interaction"
@@ -72,7 +72,7 @@ title = "Movement and pickup"
 goal = "Start play, move, and collect an object."
 plan = "tests/play/interaction.json"
 required_checks = ["play begins", "movement changes position", "pickup changes progress"]
-audio = true
+audio_expectation = "audible"
 
 [[play.scenarios]]
 id = "success"
@@ -80,7 +80,7 @@ title = "Completed collection"
 goal = "Collect all three objects and reach the completed state."
 plan = "tests/play/success.json"
 required_checks = ["three pickups register", "completion state is distinct", "music remains audible"]
-audio = true
+audio_expectation = "audible"
 
 [[play.scenarios]]
 id = "failure"

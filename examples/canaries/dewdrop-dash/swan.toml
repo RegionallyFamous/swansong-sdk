@@ -1,0 +1,113 @@
+schema_version = 1
+
+[sdk]
+version = "0.3.0"
+revision = "sha256:ee933570467d43faa7865cd06919b1de726715e197af9d6fa56a0b96443240fe"
+
+[game]
+id = "dewdrop-dash"
+title = "Dewdrop Dash"
+version = "0.1.0"
+template = "arcade-action"
+hardware = "color-required"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "none"
+save_bytes = 0
+rtc = false
+
+[controls.actions]
+left = ["X4"]
+right = ["X2"]
+up = ["X3"]
+down = ["X1"]
+confirm = ["A"]
+cancel = ["B"]
+reset = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 12288
+vram_tiles = 512
+palettes = 2
+sprites = 8
+sprites_per_scanline = 8
+audio_bytes = 4096
+
+[resources]
+work_ram_bytes = 2048
+vram_tiles = 0
+palettes = 0
+sprites = 0
+sprites_per_scanline = 0
+
+[[scenes]]
+id = "title"
+assets = ["title_art"]
+
+[[scenes]]
+id = "play"
+assets = ["play_art"]
+
+[[assets]]
+id = "title_art"
+type = "fullscreen"
+source = "assets/art/title.png"
+group = "title"
+
+[[assets]]
+id = "play_art"
+type = "spritesheet"
+source = "assets/art/play-tiles.png"
+group = "play"
+
+[[assets]]
+id = "theme"
+type = "music"
+source = "assets/audio/theme.toml"
+group = "common"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable title screen after a fresh boot."
+plan = "tests/play/neutral.json"
+required_checks = ["title state is visually distinct", "frame is stable", "no crash or hang"]
+audio_expectation = "audible"
+
+[[play.scenarios]]
+id = "interaction"
+title = "First seed"
+goal = "Enter the leaf, move to the first seed, and collect it."
+plan = "tests/play/interaction.json"
+required_checks = ["play begins", "the droplet moves one cell", "the first seed disappears into progress"]
+audio_expectation = "audible"
+
+[[play.scenarios]]
+id = "success"
+title = "Seed return"
+goal = "Collect all three ordered leaf seeds and return to the rain cup."
+plan = "tests/play/success.json"
+required_checks = ["all three seeds register", "returning home creates a distinct completion band", "music remains audible"]
+audio_expectation = "audible"
+
+[[play.scenarios]]
+id = "failure"
+title = "Scorch and retreat"
+goal = "Exercise a blocked edge, cross a scorch cell, and retreat to title."
+plan = "tests/play/failure.json"
+required_checks = ["world boundary blocks movement", "scorch reduces water charge", "cancel returns to the stable title"]
+audio_expectation = "audible"
+
+[[play.scenarios]]
+id = "reset"
+title = "Deterministic reset"
+goal = "Collect a seed, reset, and recover the exact initial leaf state."
+plan = "tests/play/reset.json"
+required_checks = ["reset clears seed progress", "droplet and charge return to spawn values", "replay hashes match"]
+audio_expectation = "audible"

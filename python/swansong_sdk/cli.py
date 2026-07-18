@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -141,6 +142,9 @@ def command_assets(args: argparse.Namespace) -> None:
 def _run_make(manifest, targets: list[str]) -> None:
     environment = os.environ.copy()
     environment.setdefault("SWANSONG_SDK_DIR", str(sdk_root()))
+    environment.setdefault(
+        "SWAN", f"{shlex.quote(sys.executable)} -m swansong_sdk.cli",
+    )
     environment.setdefault(
         "SWAN_GFX_HARDWARE_TILE_CAPACITY",
         "512" if manifest.hardware == "mono-compatible" else "1024",
@@ -586,6 +590,7 @@ def command_replay(args: argparse.Namespace) -> None:
             "goal": scenario.goal,
             "requiredChecks": list(scenario.required_checks),
             "requiresAudioEvidence": scenario.audio,
+            "audioExpectation": scenario.audio_expectation,
         }
     if plan_argument is None:
         raise CommandError("swan replay requires --plan or --scenario")
@@ -896,7 +901,7 @@ def command_lab(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="swan", description="Build deterministic WonderSwan games with SwanSong SDK")
-    result.add_argument("--version", action="version", version="swan 0.2.0")
+    result.add_argument("--version", action="version", version="swan 0.3.0")
     commands = result.add_subparsers(dest="command", required=True)
 
     sdk_path_parser = commands.add_parser(

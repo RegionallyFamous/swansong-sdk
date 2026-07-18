@@ -4,15 +4,24 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
-from swansong_sdk.cli import _parse_linked_usage, main
+from swansong_sdk.cli import _parse_linked_usage, _run_make, main
 from swansong_sdk.operations import OperationsError
 
 
 class CliTests(unittest.TestCase):
+    def test_make_reenters_the_active_installed_sdk(self) -> None:
+        manifest = mock.Mock(root=Path("/tmp/game"), hardware="color-required")
+        with mock.patch("swansong_sdk.cli.subprocess.run") as run:
+            _run_make(manifest, ["test"])
+        environment = run.call_args.kwargs["env"]
+        self.assertIn(str(Path(sys.executable)), environment["SWAN"])
+        self.assertTrue(environment["SWAN"].endswith(" -m swansong_sdk.cli"))
+
     def test_sdk_path_contains_complete_payload(self) -> None:
         output = StringIO()
         with redirect_stdout(output):
@@ -34,6 +43,8 @@ class CliTests(unittest.TestCase):
             "schema/author-audio.schema.json",
             "schema/author-operation-report.schema.json",
             "schema/author-handoff.schema.json",
+            "CHANGELOG.md", "docs/release-notes-0.3.0.md",
+            "docs/supply-chain.md", "toolchain.lock",
         ):
             self.assertTrue((root / relative).is_file(), relative)
 

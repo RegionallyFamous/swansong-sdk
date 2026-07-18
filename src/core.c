@@ -25,6 +25,11 @@ __attribute__((weak))
 #endif
 void swan_platform_set_vertical(bool vertical) { (void)vertical; }
 
+#if defined(__GNUC__)
+__attribute__((weak))
+#endif
+void swan_platform_reset_audio_hardware(void) {}
+
 void swan_core_init(const swan_core_config_t *config) {
     swan_core_config_t defaults;
     memset(&defaults, 0, sizeof(defaults));
@@ -78,6 +83,7 @@ void swan_core_reset_session(void) {
     core.frame.session_tick = 0;
     swan_input_drain();
     swan_audio_stop_all();
+    swan_platform_reset_audio_hardware();
     swan_gfx_hide_sprites();
     core.dirty = true;
 }

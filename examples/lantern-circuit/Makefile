@@ -1,6 +1,6 @@
 WONDERFUL_TOOLCHAIN ?= /opt/wonderful
 SWANSONG_SDK_DIR ?= ../..
-SWAN ?= env PYTHONPATH=$(SWANSONG_SDK_DIR)/python python3 -m swansong_sdk.cli
+SWAN ?= swan
 SWAN_GFX_HARDWARE_TILE_CAPACITY ?= $(shell $(SWAN) hardware-tile-capacity --project swan.toml)
 TARGET := wswan/medium
 -include $(WONDERFUL_TOOLCHAIN)/target/$(TARGET)/makedefs.mk

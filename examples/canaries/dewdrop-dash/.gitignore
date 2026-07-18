@@ -1,0 +1,7 @@
+build/
+*.wsc
+*.elf
+*.o
+*.d
+compile_commands.json
+wfconfig.toml

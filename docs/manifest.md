@@ -50,6 +50,18 @@ tempo, and looping. SFX TOML declares prioritized, timed command steps. Both
 compile into typed runtime sequencer data and are deterministically hashed and
 budgeted.
 
+The runtime exposes `swan_audio_pause()` and `swan_audio_resume()` as an exact
+static pause of music, active SFX, row, and fixed-point phase. While paused,
+ticks do not advance and new SFX are rejected. `swan_audio_position()` returns
+the deterministic row/phase plus playing and paused flags; it never consults a
+wall clock and reset/stop clears the position bit-exactly.
+
+`swan_core_reset_session()` stops the logical sequencer before invoking an
+internal platform reset. On WonderSwan this resets oscillator phase, restores
+the framework wavetable address and speaker/headphone routing, and leaves every
+channel silent for the next commit. This keeps post-reset WAV output independent
+of prior audio history without exposing raw sound-register access to gameplay.
+
 ## Resources and budgets
 
 `[resources]` records fixed work RAM, runtime-owned VRAM tiles and palettes,
@@ -69,6 +81,10 @@ and linker reservations and are intentionally separate from the game-owned
 ## Play scenarios
 
 Each `[[play.scenarios]]` declares a kebab-case ID, title, goal, checked-in
-`swan-song-frame-input-plan-v1` JSON path, required visual/behavioral checks, and
-whether audio evidence is meaningful. All generated contracts require a fresh
-boot and media inspection.
+`swan-song-frame-input-plan-v1` JSON path, required visual/behavioral checks,
+and an optional `audio_expectation` of `audible`, `silent`, or `any`. Every mode
+requires a decoded, non-empty, hash-bound WAV and explicit WAV inspection;
+`audible` requires non-zero PCM amplitude while `silent` requires exactly zero.
+The v0.2 `audio = true` spelling remains accepted as `audible`, and `false`
+maps to `any`; conflicting old and new declarations are rejected. All generated
+contracts require a fresh boot and media inspection.

@@ -189,7 +189,8 @@ remains the execution command. The report combines:
 
 - compact effective-input segments and indexed input-change points from a
   validated `swan-song-frame-input-plan-v1`;
-- declared scenario goal, required checks, and audio requirement when
+- declared scenario goal, required checks, and audible/silent/any audio
+  expectation when
   `--scenario` is used;
 - ordered `swansong-replay-checkpoints-v1` annotations;
 - one or more fully decoded PNG/WAV/structured evidence directories bound with
@@ -284,19 +285,26 @@ release before packaging.
 
 Each play gate must also have `build/swansong/<scenario>/observation.json` using
 `swan-song-evidence-observation-v1`. The record binds the ROM, PNG, and WAV
-hashes, names an observer, asserts PNG inspection, asserts WAV inspection when
-the scenario declares audio, records a `pass` verdict, and has one non-empty
-observation for every manifest `required_checks` entry. Only a person or
+hashes, names an observer, asserts PNG and WAV inspection, records a `pass`
+verdict, and has one non-empty observation for every manifest
+`required_checks` entry. Release fully decodes a non-empty hash-bound WAV in
+all modes, requires non-zero PCM for `audible`, and requires zero PCM for
+`silent`. Only a person or
 game-playing agent that inspected the current media should create this record;
 execution success and changing hashes cannot create it automatically.
 
 On success, Release creates a ZIP containing the Color ROM, the mono validation
 ROM when present, the resource report, release notes, PNG/WAV/JSON evidence for
 each declared scenario, its inspected observation record, pinned SDK/toolchain
-provenance, and sorted SHA-256 checksums. SDK provenance includes both the
-semantic version and deterministic payload revision, and Release refuses a
-resolved SDK that differs from `[sdk]` in `swan.toml`. PNG and WAV files are fully decoded
-before acceptance. ZIP members are sorted
+provenance, SPDX and CycloneDX SBOMs, an unsigned in-toto/SLSA provenance
+statement, and sorted SHA-256 checksums. SDK provenance includes both the
+semantic version and
+deterministic payload revision, and Release refuses a resolved SDK that differs
+from `[sdk]` in `swan.toml`. Toolchain provenance must contain an immutable
+image digest and the exact package set declared by `toolchain.lock`; incomplete
+or mutable provenance fails before packaging. See
+[Supply chain](supply-chain.md) for the artifact contract. PNG and WAV files
+are fully decoded before acceptance. ZIP members are sorted
 and use a fixed timestamp and mode, making unchanged inputs byte-identical.
 --output accepts a ZIP filename or destination directory. --notes supplies
 Markdown; otherwise the SDK generates deterministic notes from the manifest.
@@ -315,7 +323,7 @@ fresh SwanSong evidence and manifest exactly:
   "scenario": "interaction",
   "verdict": "pass",
   "pngInspected": true,
-  "wavInspected": false,
+  "wavInspected": true,
   "observer": "release playtester",
   "romSHA256": "...",
   "capturePNG_SHA256": "...",

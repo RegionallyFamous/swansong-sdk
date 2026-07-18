@@ -16,9 +16,13 @@ class ManifestTests(unittest.TestCase):
                 project = create_project(f"test-{recipe}", recipe, root / recipe)
                 manifest = load_manifest(project / "swan.toml")
                 self.assertEqual(manifest.template, recipe)
-                self.assertEqual(manifest.sdk_version, "0.2.0")
+                self.assertEqual(manifest.sdk_version, "0.3.0")
                 self.assertRegex(manifest.sdk_revision or "", r"^sha256:[0-9a-f]{64}$")
                 self.assertGreaterEqual(len(manifest.play_scenarios), 4)
+                self.assertTrue(all(
+                    item.audio_expectation in {"audible", "silent", "any"}
+                    for item in manifest.play_scenarios
+                ))
                 self.assertEqual(manifest.rom_name, f"test_{recipe.replace('-', '_')}.wsc")
 
     def test_finds_manifest_in_parent(self) -> None:
@@ -70,6 +74,27 @@ class ManifestTests(unittest.TestCase):
             path = project / "swan.toml"
             path.write_text(path.read_text().replace('initial_scene = "title"', 'initial_scene = "missing"'))
             with self.assertRaisesRegex(ManifestError, "not declared"):
+                load_manifest(path)
+
+    def test_audio_expectations_and_legacy_boolean_are_compatible(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project(
+                "audio-contract", "arcade-action", Path(temporary) / "project"
+            )
+            path = project / "swan.toml"
+            manifest = load_manifest(path)
+            self.assertEqual(manifest.play_scenarios[0].audio_expectation, "audible")
+            text = path.read_text().replace(
+                'audio_expectation = "audible"', "audio = true", 1
+            )
+            path.write_text(text)
+            self.assertEqual(
+                load_manifest(path).play_scenarios[0].audio_expectation, "audible"
+            )
+            path.write_text(text.replace(
+                "audio = true", 'audio = true\naudio_expectation = "silent"', 1
+            ))
+            with self.assertRaisesRegex(ManifestError, "conflict"):
                 load_manifest(path)
 
 

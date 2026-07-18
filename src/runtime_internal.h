@@ -58,5 +58,6 @@ const swan_instrument_t SWAN_FAR *swan_audio_internal_instruments(void);
 uint8_t swan_audio_internal_instrument_count(void);
 bool swan_core_internal_booting(void);
 void swan_platform_set_vertical(bool vertical);
+void swan_platform_reset_audio_hardware(void);
 
 #endif

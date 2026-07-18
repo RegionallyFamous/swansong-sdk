@@ -1,0 +1,30 @@
+# SwanSong SDK changelog
+
+## 0.3.0 — 2026-07-18
+
+- Added deterministic failure-plan minimization and read-only replay timelines.
+- Added project-owned visual authoring contracts for tilemaps, sprites,
+  palettes, collision, scene flow, and four-channel audio.
+- Added `audible`, `silent`, and `any` play-contract audio expectations with
+  decoded, non-empty, hash-bound WAV inspection in every mode.
+- Added exact static audio pause/resume and deterministic sequencer row/phase
+  reporting without a wall clock.
+- Made session reset clear WonderSwan oscillator phase after stopping the
+  logical sequencer, eliminating cross-history WAV drift.
+- Added deterministic SPDX 2.3, CycloneDX 1.6, and unsigned
+  in-toto/SLSA-style release records, with fail-closed SDK and Wonderful
+  dependency pins.
+- Added Dewdrop Dash and Signal Orchard as recipe-only production canaries,
+  plus isolated-wheel CI that scaffolds, builds, tests, and reports both.
+
+## 0.2.0 — 2026-07-17
+
+- Added Doctor, Dev, Scenario Recorder, Evidence Diff, deterministic Fuzz,
+  Profiler, Asset Optimizer, Save/RTC Lab, and deterministic Release tooling.
+- Added the Wonderful-backed graphic and audio asset pipeline and all three
+  production recipes.
+
+## 0.1.0 — 2026-07-16
+
+- Introduced the deterministic C11 runtime, scenes, semantic input, graphics,
+  RNG, save/RTC foundations, CLI, and first recipe canaries.
