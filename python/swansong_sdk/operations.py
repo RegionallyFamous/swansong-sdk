@@ -27,7 +27,7 @@ from .png2bpp import PNGError, read_png
 from .provenance import (
     ProvenanceError, supply_chain_artifacts, validate_provenance,
 )
-from .swansong import SwanSongError, server_command
+from .swansong import SwanSongError, probe_server, server_command
 
 
 DOCTOR_SCHEMA = "swansong-doctor-report-v1"
@@ -243,43 +243,32 @@ def _probe_swansong(project_root: Path, timeout: float) -> tuple[bool, str, dict
         "executable": command[0],
         "argumentCount": max(0, len(command) - 1),
     }
-    request = canonical_json({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2025-11-25",
-            "capabilities": {},
-            "clientInfo": {"name": "swan-doctor", "version": _package_version()},
-        },
-    }, compact=True)
     try:
-        result = run_process(command, cwd=project_root, timeout=timeout,
-                             environment=os.environ.copy(), input_text=request)
-    except OperationsError as exc:
-        return False, str(exc), identity
-    if result.returncode:
-        return False, f"SwanSong interface exited with code {result.returncode}", {
-            **identity, "returnCode": result.returncode,
-        }
-    response = None
-    for line in result.stdout.splitlines():
-        try:
-            candidate = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(candidate, dict) and candidate.get("id") == 1:
-            response = candidate
-            break
-    if response is None:
-        return False, "SwanSong did not return an initialize response", {
-            **identity, "returnCode": result.returncode,
-        }
+        response = probe_server(
+            command,
+            cwd=project_root,
+            timeout=timeout,
+            client_name="swan-doctor",
+            client_version=_package_version(),
+        )
+    except SwanSongError as exc:
+        details = dict(identity)
+        if exc.returncode is not None:
+            details["returnCode"] = exc.returncode
+            if exc.returncode:
+                return False, (
+                    f"SwanSong interface exited with code {exc.returncode}"
+                ), details
+            return False, "SwanSong did not return an initialize response", details
+        return False, str(exc), details
     if "error" in response:
         return False, "SwanSong rejected the initialize request", {
             **identity, "error": response["error"],
         }
-    server = response.get("result", {}).get("serverInfo", {})
+    result = response.get("result")
+    if not isinstance(result, dict):
+        return False, "SwanSong initialize response has no result object", identity
+    server = result.get("serverInfo", {})
     name = server.get("name", "") if isinstance(server, dict) else ""
     if not isinstance(name, str) or "swansong" not in name.lower():
         return False, f"refusing non-SwanSong server {name!r}", {
@@ -398,7 +387,7 @@ def doctor_report(project: str | Path | None = None, *, timeout: float = 5.0) ->
             "schema/author-handoff.schema.json",
             "templates/common/Makefile.tmpl",
             "CHANGELOG.md",
-            "docs/release-notes-0.3.0.md",
+            "docs/release-notes-0.3.1.md",
             "docs/supply-chain.md",
             "toolchain.lock",
         )

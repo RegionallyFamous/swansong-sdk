@@ -16,7 +16,7 @@ class ManifestTests(unittest.TestCase):
                 project = create_project(f"test-{recipe}", recipe, root / recipe)
                 manifest = load_manifest(project / "swan.toml")
                 self.assertEqual(manifest.template, recipe)
-                self.assertEqual(manifest.sdk_version, "0.3.0")
+                self.assertEqual(manifest.sdk_version, "0.3.1")
                 self.assertRegex(manifest.sdk_revision or "", r"^sha256:[0-9a-f]{64}$")
                 self.assertGreaterEqual(len(manifest.play_scenarios), 4)
                 self.assertTrue(all(

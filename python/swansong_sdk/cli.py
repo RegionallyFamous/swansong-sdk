@@ -901,7 +901,7 @@ def command_lab(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="swan", description="Build deterministic WonderSwan games with SwanSong SDK")
-    result.add_argument("--version", action="version", version="swan 0.3.0")
+    result.add_argument("--version", action="version", version="swan 0.3.1")
     commands = result.add_subparsers(dest="command", required=True)
 
     sdk_path_parser = commands.add_parser(

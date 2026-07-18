@@ -1,8 +1,8 @@
 schema_version = 1
 
 [sdk]
-version = "0.3.0"
-revision = "sha256:57be11ce9e05bc61e6bd5155c1cc86cdb151acbfe0c17e6776394ba4a06e44cc"
+version = "0.3.1"
+revision = "sha256:92c2f3b0823465c0d0b0d4e094ef3b2c89fcbf2e984a364cb1021e95e6043874"
 
 [game]
 id = "signal-orchard"

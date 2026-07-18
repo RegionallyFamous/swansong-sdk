@@ -24,7 +24,7 @@ from swansong_sdk.operations import (
     ProcessResult, development_session, doctor_report, release_project,
     run_cli_gate, watched_paths,
 )
-from swansong_sdk.operations import _verified_evidence_files
+from swansong_sdk.operations import _probe_swansong, _verified_evidence_files
 from swansong_sdk.scaffold import create_project
 from swansong_sdk.plans import load_plan
 
@@ -40,6 +40,20 @@ for line in sys.stdin:
         "id": request["id"],
         "result": {"serverInfo": {"name": "swansong-doctor-fixture"}},
     }, sort_keys=True), flush=True)
+'''
+
+LIVE_SWANSONG_SERVER = r'''
+import json
+import sys
+import time
+
+request = json.loads(sys.stdin.readline())
+print(json.dumps({
+    "jsonrpc": "2.0",
+    "id": request["id"],
+    "result": {"serverInfo": {"name": "swansong-live-fixture"}},
+}, sort_keys=True), flush=True)
+time.sleep(10)
 '''
 
 PNG_FIXTURE = base64.b64decode(
@@ -133,6 +147,19 @@ class OperationsTests(unittest.TestCase):
                 "sdk-project-pin", "project-paths", "generated-config",
                 "wonderful", "swansong",
             ])
+
+    def test_doctor_probe_accepts_reply_from_server_that_remains_alive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            server = root / "live_swansong.py"
+            server.write_text(LIVE_SWANSONG_SERVER)
+            environment = {
+                "SWANSONG_MCP_COMMAND": f"{sys.executable} {server}",
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                ok, message, details = _probe_swansong(root, timeout=0.5)
+            self.assertTrue(ok, message)
+            self.assertEqual(details["serverName"], "swansong-live-fixture")
 
     def test_doctor_fails_when_generated_config_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
