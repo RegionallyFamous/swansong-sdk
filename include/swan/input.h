@@ -20,6 +20,10 @@ typedef enum {
 
 #define SWAN_KEY_ALL ((uint16_t)0x07FFu)
 #define SWAN_ACTION_CAPACITY 16u
+#define SWAN_INPUT_CHORD_CAPACITY 8u
+#define SWAN_INPUT_DEFAULT_TAP_MAX_FRAMES 8u
+#define SWAN_INPUT_DEFAULT_DOUBLE_TAP_WINDOW 12u
+#define SWAN_INPUT_DEFAULT_HOLD_THRESHOLD 20u
 
 typedef struct {
     uint16_t held;
@@ -30,12 +34,22 @@ typedef struct {
     uint16_t actions_pressed;
     uint16_t actions_released;
     uint16_t actions_repeated;
+    uint16_t actions_tapped;
+    uint16_t actions_double_tapped;
+    uint16_t actions_hold_started;
+    uint16_t actions_held_long;
+    uint16_t actions_released_after_hold;
+    uint16_t chords_pressed;
 } swan_input_t;
 
 typedef struct {
     uint16_t keys[SWAN_ACTION_CAPACITY];
     uint8_t repeat_delay;
     uint8_t repeat_period;
+    uint16_t chord_actions[SWAN_INPUT_CHORD_CAPACITY];
+    uint8_t tap_max_frames;
+    uint8_t double_tap_window;
+    uint8_t hold_threshold;
 } swan_input_config_t;
 
 void swan_input_init(const swan_input_config_t *config);
@@ -48,5 +62,11 @@ bool swan_action_held(uint8_t action);
 bool swan_action_pressed(uint8_t action);
 bool swan_action_released(uint8_t action);
 bool swan_action_repeated(uint8_t action);
+bool swan_action_tapped(uint8_t action);
+bool swan_action_double_tapped(uint8_t action);
+bool swan_action_hold_started(uint8_t action);
+bool swan_action_held_long(uint8_t action);
+bool swan_action_released_after_hold(uint8_t action);
+bool swan_chord_pressed(uint8_t chord);
 
 #endif

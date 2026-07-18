@@ -298,7 +298,9 @@ def _project_source_status(manifest: Manifest) -> tuple[bool, str, dict[str, obj
             missing.append(str(path))
     for scenario in manifest.play_scenarios:
         try:
-            load_plan(root, scenario.plan)
+            load_plan(
+                root, scenario.plan, ready_frames=manifest.play_ready_frames
+            )
         except PlanError as exc:
             missing.append(str(exc))
     details: dict[str, object] = {
@@ -387,7 +389,9 @@ def doctor_report(project: str | Path | None = None, *, timeout: float = 5.0) ->
             "schema/author-handoff.schema.json",
             "templates/common/Makefile.tmpl",
             "CHANGELOG.md",
+            "docs/input-gestures.md",
             "docs/release-notes-0.3.1.md",
+            "docs/release-notes-0.4.0.md",
             "docs/supply-chain.md",
             "toolchain.lock",
         )
@@ -791,7 +795,10 @@ def _verified_evidence_files(manifest: Manifest, scenario: object,
         ) from exc
     if not isinstance(metadata, dict) or metadata.get("schema") != "swan-song-playtest-report-v1":
         raise OperationsError(f"play:{scenario_id} produced unsupported evidence metadata")
-    _, expected_plan = load_plan(manifest.root, str(getattr(scenario, "plan")))
+    _, expected_plan = load_plan(
+        manifest.root, str(getattr(scenario, "plan")),
+        ready_frames=manifest.play_ready_frames,
+    )
     expected_rom_sha = _sha256(rom_payload)
     audio = metadata.get("audio")
     checks = {

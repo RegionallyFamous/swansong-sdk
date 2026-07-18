@@ -46,7 +46,7 @@ PYTHONPATH=python python3 -m unittest discover -s tests/python -v
 make test
 ```
 
-For changes affecting a recipe, scaffold all three recipes and run `swan test`
+For changes affecting a recipe, scaffold every recipe and run `swan test`
 and `swan build` against the pinned Wonderful toolchain. For runtime behavior,
 run the affected contracts with `swan play` and inspect the returned PNG, WAV,
 and structured evidence before reporting a pass.

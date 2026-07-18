@@ -27,6 +27,13 @@ class EvidenceThresholds:
     pcm_sample_tolerance: int = 0
     changed_sample_ratio: float = 0.0
     normalized_rms_delta: float = 0.0
+    audio_signal_floor: float = 0.0
+    stereo_balance_delta: float | None = None
+    cue_onset_delta_ms: float | None = None
+    silent_frame_ratio_increase: float | None = None
+    internal_silence_increase_ms: float | None = None
+    clipped_sample_ratio_increase: float | None = None
+    loop_seam_delta_increase: float | None = None
 
     def __post_init__(self) -> None:
         if not 0 <= self.pixel_channel_tolerance <= 255:
@@ -34,17 +41,41 @@ class EvidenceThresholds:
         if self.pcm_sample_tolerance < 0:
             raise EvidenceError("pcm_sample_tolerance must be nonnegative")
         for name in ("changed_pixel_ratio", "changed_sample_ratio",
-                     "normalized_rms_delta"):
-            if not 0.0 <= getattr(self, name) <= 1.0:
+                     "normalized_rms_delta", "audio_signal_floor"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
                 raise EvidenceError(f"{name} must be between 0 and 1")
 
-    def to_dict(self) -> dict[str, int | float]:
+        optional_ranges = {
+            "stereo_balance_delta": 2.0,
+            "silent_frame_ratio_increase": 1.0,
+            "clipped_sample_ratio_increase": 1.0,
+            "loop_seam_delta_increase": 2.0,
+        }
+        for name, maximum in optional_ranges.items():
+            value = getattr(self, name)
+            if value is not None and (
+                    not math.isfinite(value) or not 0.0 <= value <= maximum):
+                raise EvidenceError(f"{name} must be between 0 and {maximum:g}")
+        for name in ("cue_onset_delta_ms", "internal_silence_increase_ms"):
+            value = getattr(self, name)
+            if value is not None and (not math.isfinite(value) or value < 0.0):
+                raise EvidenceError(f"{name} must be nonnegative")
+
+    def to_dict(self) -> dict[str, int | float | None]:
         return {
             "pixelChannelTolerance": self.pixel_channel_tolerance,
             "changedPixelRatio": self.changed_pixel_ratio,
             "pcmSampleTolerance": self.pcm_sample_tolerance,
             "changedSampleRatio": self.changed_sample_ratio,
             "normalizedRmsDelta": self.normalized_rms_delta,
+            "audioSignalFloor": self.audio_signal_floor,
+            "stereoBalanceDelta": self.stereo_balance_delta,
+            "cueOnsetDeltaMs": self.cue_onset_delta_ms,
+            "silentFrameRatioIncrease": self.silent_frame_ratio_increase,
+            "internalSilenceIncreaseMs": self.internal_silence_increase_ms,
+            "clippedSampleRatioIncrease": self.clipped_sample_ratio_increase,
+            "loopSeamDeltaIncrease": self.loop_seam_delta_increase,
         }
 
 
@@ -172,8 +203,97 @@ class _WaveData:
     def full_scale(self) -> int:
         return 128 if self.sample_width == 1 else 1 << (self.sample_width * 8 - 1)
 
-    def metadata(self) -> dict[str, Any]:
-        return {
+    def metadata(self, signal_floor: float = 0.0) -> dict[str, Any]:
+        floor_amplitude = math.floor(signal_floor * self.full_scale)
+        channel_energy = [0] * self.channels
+        channel_peak = [0] * self.channels
+        clipped_by_channel = [0] * self.channels
+        first_sample = [0] * self.channels
+        last_sample = [0] * self.channels
+        clipped = 0
+        audible_frames = 0
+        first_audible: int | None = None
+        last_audible: int | None = None
+        current_silence = 0
+        maximum_internal_silence = 0
+
+        for frame in range(self.frame_count):
+            audible = False
+            base = frame * self.channels
+            for channel in range(self.channels):
+                sample = self.samples[base + channel]
+                if frame == 0:
+                    first_sample[channel] = sample
+                last_sample[channel] = sample
+                magnitude = abs(sample)
+                channel_energy[channel] += sample * sample
+                channel_peak[channel] = max(channel_peak[channel], magnitude)
+                if sample <= -self.full_scale or sample >= self.full_scale - 1:
+                    clipped += 1
+                    clipped_by_channel[channel] += 1
+                if magnitude > floor_amplitude:
+                    audible = True
+            if audible:
+                audible_frames += 1
+                if first_audible is None:
+                    first_audible = frame
+                else:
+                    maximum_internal_silence = max(
+                        maximum_internal_silence, current_silence
+                    )
+                last_audible = frame
+                current_silence = 0
+            else:
+                current_silence += 1
+
+        silent_frames = self.frame_count - audible_frames
+        leading_silence = (
+            first_audible if first_audible is not None else self.frame_count
+        )
+        trailing_silence = (
+            self.frame_count - last_audible - 1
+            if last_audible is not None else self.frame_count
+        )
+        loop_seams = [
+            abs(last_sample[channel] - first_sample[channel]) / self.full_scale
+            if self.frame_count else 0.0
+            for channel in range(self.channels)
+        ]
+        channel_metrics = []
+        for channel in range(self.channels):
+            rms = (
+                math.sqrt(channel_energy[channel] / self.frame_count)
+                if self.frame_count else 0.0
+            )
+            channel_metrics.append({
+                "channelIndex": channel,
+                "peakAmplitude": channel_peak[channel],
+                "normalizedPeak": round(channel_peak[channel] / self.full_scale, 9),
+                "rmsAmplitude": round(rms, 9),
+                "normalizedRms": round(rms / self.full_scale, 9),
+                "clippedSamples": clipped_by_channel[channel],
+                "clippedSampleRatio": round(
+                    clipped_by_channel[channel] / self.frame_count, 9
+                ) if self.frame_count else 0.0,
+            })
+
+        stereo = None
+        if self.channels == 2:
+            total_energy = channel_energy[0] + channel_energy[1]
+            balance = (
+                (channel_energy[1] - channel_energy[0]) / total_energy
+                if total_energy else 0.0
+            )
+            stereo = {
+                "leftEnergy": channel_energy[0],
+                "rightEnergy": channel_energy[1],
+                "balance": round(balance, 9),
+                "dominantChannel": (
+                    "right" if balance > 0.0 else "left" if balance < 0.0 else "center"
+                ),
+            }
+
+        metadata = {
             "sha256": self.sha256,
             "channels": self.channels,
             "sampleWidthBytes": self.sample_width,
@@ -184,7 +304,34 @@ class _WaveData:
             "normalizedPeak": round(self.maximum_amplitude / self.full_scale, 9),
             "rmsAmplitude": round(self.rms, 9),
             "normalizedRms": round(self.rms / self.full_scale, 9),
+            "audioSignalFloor": signal_floor,
+            "audioSignalFloorAmplitude": floor_amplitude,
+            "audibleFrames": audible_frames,
+            "silentFrames": silent_frames,
+            "silentFrameRatio": round(
+                silent_frames / self.frame_count, 9
+            ) if self.frame_count else 0.0,
+            "cueOnsetFrame": first_audible,
+            "cueOnsetMs": (
+                round(first_audible * 1000 / self.frame_rate, 6)
+                if first_audible is not None else None
+            ),
+            "leadingSilenceMs": round(leading_silence * 1000 / self.frame_rate, 6),
+            "trailingSilenceMs": round(trailing_silence * 1000 / self.frame_rate, 6),
+            "maximumInternalSilenceFrames": maximum_internal_silence,
+            "maximumInternalSilenceMs": round(
+                maximum_internal_silence * 1000 / self.frame_rate, 6
+            ),
+            "clippedSamples": clipped,
+            "clippedSampleRatio": round(
+                clipped / len(self.samples), 9
+            ) if self.samples else 0.0,
+            "loopSeamByChannel": [round(value, 9) for value in loop_seams],
+            "maximumLoopSeam": round(max(loop_seams, default=0.0), 9),
+            "channelMetrics": channel_metrics,
+            "stereo": stereo,
         }
+        return metadata
 
 
 def _decode_samples(payload: bytes, width: int) -> tuple[int, ...]:
@@ -221,9 +368,136 @@ def _read_wave(path: Path) -> _WaveData:
                      _sha256(path))
 
 
-def validate_wav(path: str | Path) -> dict[str, Any]:
+def validate_wav(path: str | Path, *, signal_floor: float = 0.0) -> dict[str, Any]:
     """Fully decode PCM evidence and return deterministic format metrics."""
-    return _read_wave(Path(path)).metadata()
+    if not math.isfinite(signal_floor) or not 0.0 <= signal_floor <= 1.0:
+        raise EvidenceError("signal_floor must be between 0 and 1")
+    return _read_wave(Path(path)).metadata(signal_floor)
+
+
+def _regression_check(*, threshold: float | None, before: Any, after: Any,
+                      delta: float | None, regression: bool,
+                      applicable: bool = True) -> dict[str, Any]:
+    return {
+        "enabled": threshold is not None,
+        "applicable": applicable,
+        "before": before,
+        "after": after,
+        "delta": round(delta, 9) if delta is not None else None,
+        "threshold": threshold,
+        "regression": threshold is not None and applicable and regression,
+    }
+
+
+def _audio_regressions(before: Mapping[str, Any], after: Mapping[str, Any],
+                       limits: EvidenceThresholds) -> dict[str, Any]:
+    before_stereo = before.get("stereo")
+    after_stereo = after.get("stereo")
+    stereo_applicable = isinstance(before_stereo, Mapping) and isinstance(
+        after_stereo, Mapping
+    )
+    stereo_delta = (
+        abs(float(after_stereo["balance"]) - float(before_stereo["balance"]))
+        if stereo_applicable else None
+    )
+
+    before_onset = before.get("cueOnsetMs")
+    after_onset = after.get("cueOnsetMs")
+    cue_applicable = before_onset is not None
+    cue_delta = (
+        abs(float(after_onset) - float(before_onset))
+        if before_onset is not None and after_onset is not None else None
+    )
+    cue_regression = (
+        after_onset is None or
+        (cue_delta is not None and limits.cue_onset_delta_ms is not None and
+         cue_delta > limits.cue_onset_delta_ms)
+    )
+
+    silence_delta = max(
+        0.0,
+        float(after["silentFrameRatio"]) - float(before["silentFrameRatio"]),
+    )
+    internal_silence_delta = max(
+        0.0,
+        float(after["maximumInternalSilenceMs"]) -
+        float(before["maximumInternalSilenceMs"]),
+    )
+    clipping_delta = max(
+        0.0,
+        float(after["clippedSampleRatio"]) - float(before["clippedSampleRatio"]),
+    )
+    seam_delta = max(
+        0.0,
+        float(after["maximumLoopSeam"]) - float(before["maximumLoopSeam"]),
+    )
+
+    checks = {
+        "stereoBalance": _regression_check(
+            threshold=limits.stereo_balance_delta,
+            before=before_stereo.get("balance") if stereo_applicable else None,
+            after=after_stereo.get("balance") if stereo_applicable else None,
+            delta=stereo_delta,
+            regression=(
+                stereo_delta is not None and limits.stereo_balance_delta is not None and
+                stereo_delta > limits.stereo_balance_delta
+            ),
+            applicable=stereo_applicable,
+        ),
+        "cueOnset": _regression_check(
+            threshold=limits.cue_onset_delta_ms,
+            before=before_onset,
+            after=after_onset,
+            delta=cue_delta,
+            regression=cue_regression,
+            applicable=cue_applicable,
+        ),
+        "silentFrames": _regression_check(
+            threshold=limits.silent_frame_ratio_increase,
+            before=before["silentFrameRatio"],
+            after=after["silentFrameRatio"],
+            delta=silence_delta,
+            regression=(
+                limits.silent_frame_ratio_increase is not None and
+                silence_delta > limits.silent_frame_ratio_increase
+            ),
+        ),
+        "internalSilence": _regression_check(
+            threshold=limits.internal_silence_increase_ms,
+            before=before["maximumInternalSilenceMs"],
+            after=after["maximumInternalSilenceMs"],
+            delta=internal_silence_delta,
+            regression=(
+                limits.internal_silence_increase_ms is not None and
+                internal_silence_delta > limits.internal_silence_increase_ms
+            ),
+        ),
+        "clipping": _regression_check(
+            threshold=limits.clipped_sample_ratio_increase,
+            before=before["clippedSampleRatio"],
+            after=after["clippedSampleRatio"],
+            delta=clipping_delta,
+            regression=(
+                limits.clipped_sample_ratio_increase is not None and
+                clipping_delta > limits.clipped_sample_ratio_increase
+            ),
+        ),
+        "loopSeam": _regression_check(
+            threshold=limits.loop_seam_delta_increase,
+            before=before["maximumLoopSeam"],
+            after=after["maximumLoopSeam"],
+            delta=seam_delta,
+            regression=(
+                limits.loop_seam_delta_increase is not None and
+                seam_delta > limits.loop_seam_delta_increase
+            ),
+        ),
+    }
+    return {
+        "configured": any(item["enabled"] for item in checks.values()),
+        "detected": any(item["regression"] for item in checks.values()),
+        "checks": checks,
+    }
 
 
 def diff_wav(before: str | Path, after: str | Path,
@@ -231,6 +505,8 @@ def diff_wav(before: str | Path, after: str | Path,
     limits = thresholds or EvidenceThresholds()
     left = _read_wave(Path(before))
     right = _read_wave(Path(after))
+    before_metadata = left.metadata(limits.audio_signal_floor)
+    after_metadata = right.metadata(limits.audio_signal_floor)
     format_match = (left.channels, left.sample_width, left.frame_rate) == (
         right.channels, right.sample_width, right.frame_rate)
     total = max(len(left.samples), len(right.samples))
@@ -249,10 +525,11 @@ def diff_wav(before: str | Path, after: str | Path,
     rms_delta = abs(
         left.rms / left.full_scale - right.rms / right.full_scale
     )
+    regressions = _audio_regressions(before_metadata, after_metadata, limits)
     return {
         "schema": "swansong-wav-diff-v1",
-        "before": left.metadata(),
-        "after": right.metadata(),
+        "before": before_metadata,
+        "after": after_metadata,
         "formatMatch": format_match,
         "frameCountMatch": left.frame_count == right.frame_count,
         "changedSamples": changed,
@@ -260,10 +537,11 @@ def diff_wav(before: str | Path, after: str | Path,
         "maximumSampleDelta": maximum_delta,
         "meanAbsoluteSampleDelta": round(absolute_delta / total, 9) if total else 0.0,
         "normalizedRmsDelta": round(rms_delta, 9),
+        "regressions": regressions,
         "meaningfulDifference": (
             not format_match or left.frame_count != right.frame_count or
             ratio > limits.changed_sample_ratio or
-            rms_delta > limits.normalized_rms_delta
+            rms_delta > limits.normalized_rms_delta or regressions["detected"]
         ),
     }
 

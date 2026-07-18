@@ -1,5 +1,17 @@
 # SwanSong SDK changelog
 
+## 0.4.0 — 2026-07-18
+
+- Added deterministic semantic taps, double taps, holds, hold releases, and
+  same-frame action chords to the C11 input runtime and generated controls.
+- Added a production `utility-app` recipe with dual-cluster navigation,
+  fixed-capacity editing, transactional EEPROM persistence, distinct outcomes,
+  host tests, and complete SwanSong scenarios.
+- Added an enforceable play-readiness boundary so scenarios cannot send their
+  first input before a game's fresh-boot safe point.
+- Expanded WAV evidence with stereo balance, cue onset, dropout, clipping, and
+  loop-seam measurements plus optional per-scenario regression limits.
+
 ## 0.3.1 — 2026-07-18
 
 - Fixed `swan doctor` timing out after a valid initialize response from a

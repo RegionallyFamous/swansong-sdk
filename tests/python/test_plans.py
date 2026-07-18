@@ -5,7 +5,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from swansong_sdk.plans import PlanError, load_plan, validate_plan
+from swansong_sdk.plans import (
+    PlanError, load_plan, validate_plan, validate_play_readiness,
+)
 
 
 class PlanTests(unittest.TestCase):
@@ -34,6 +36,32 @@ class PlanTests(unittest.TestCase):
             ],
         }
         self.assertIs(validate_plan(plan, Path("rapid.json")), plan)
+
+    def test_play_readiness_uses_first_non_neutral_input(self) -> None:
+        plan = {
+            "schema": "swan-song-frame-input-plan-v1",
+            "totalFrames": 30,
+            "events": [
+                {"frameIndex": 0, "inputs": []},
+                {"frameIndex": 8, "inputs": []},
+                {"frameIndex": 12, "inputs": ["a"]},
+                {"frameIndex": 13, "inputs": []},
+            ],
+        }
+        path = Path("ready.json")
+        self.assertIs(validate_play_readiness(plan, path, 12), plan)
+        with self.assertRaisesRegex(
+            PlanError,
+            r"first non-neutral input at frame 12 is before play\.ready_frames 13",
+        ):
+            validate_play_readiness(plan, path, 13)
+
+        neutral = {
+            "schema": "swan-song-frame-input-plan-v1",
+            "totalFrames": 10,
+            "events": [{"frameIndex": 0, "inputs": []}],
+        }
+        self.assertIs(validate_play_readiness(neutral, path, 120), neutral)
 
     def test_rejects_unknown_inputs_and_non_neutral_boot(self) -> None:
         with self.assertRaisesRegex(PlanError, "neutral frame 0"):
@@ -66,6 +94,22 @@ class PlanTests(unittest.TestCase):
                     load_plan(root, "../outside-plan.json")
             finally:
                 outside.unlink(missing_ok=True)
+
+    def test_load_applies_optional_readiness_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            path = root / "early.json"
+            path.write_text(json.dumps({
+                "schema": "swan-song-frame-input-plan-v1",
+                "totalFrames": 20,
+                "events": [
+                    {"frameIndex": 0, "inputs": []},
+                    {"frameIndex": 10, "inputs": ["a"]},
+                ],
+            }))
+            load_plan(root, "early.json", ready_frames=10)
+            with self.assertRaisesRegex(PlanError, "play.ready_frames 11"):
+                load_plan(root, "early.json", ready_frames=11)
 
 
 if __name__ == "__main__":

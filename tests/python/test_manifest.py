@@ -12,11 +12,15 @@ class ManifestTests(unittest.TestCase):
     def test_every_recipe_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for recipe in ("arcade-action", "menu-puzzle", "grid-tactics"):
+            for recipe in ("arcade-action", "menu-puzzle", "grid-tactics", "utility-app"):
                 project = create_project(f"test-{recipe}", recipe, root / recipe)
                 manifest = load_manifest(project / "swan.toml")
                 self.assertEqual(manifest.template, recipe)
-                self.assertEqual(manifest.sdk_version, "0.3.1")
+                self.assertEqual(
+                    manifest.play_ready_frames,
+                    180 if recipe == "utility-app" else 120,
+                )
+                self.assertEqual(manifest.sdk_version, "0.4.0")
                 self.assertRegex(manifest.sdk_revision or "", r"^sha256:[0-9a-f]{64}$")
                 self.assertGreaterEqual(len(manifest.play_scenarios), 4)
                 self.assertTrue(all(
@@ -24,6 +28,24 @@ class ManifestTests(unittest.TestCase):
                     for item in manifest.play_scenarios
                 ))
                 self.assertEqual(manifest.rom_name, f"test_{recipe.replace('-', '_')}.wsc")
+
+    def test_play_readiness_defaults_for_existing_projects_and_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project(
+                "ready-game", "arcade-action", Path(temporary) / "project"
+            )
+            path = project / "swan.toml"
+            explicit = path.read_text()
+            path.write_text(explicit.replace("[play]\nready_frames = 120\n\n", ""))
+            self.assertEqual(load_manifest(path).play_ready_frames, 60)
+
+            path.write_text(explicit.replace("ready_frames = 120", "ready_frames = 0"))
+            with self.assertRaisesRegex(ManifestError, "greater than zero"):
+                load_manifest(path)
+
+            path.write_text(explicit.replace("ready_frames = 120", "ready_frames = true"))
+            with self.assertRaisesRegex(ManifestError, "must be an integer"):
+                load_manifest(path)
 
     def test_finds_manifest_in_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -38,6 +60,73 @@ class ManifestTests(unittest.TestCase):
             path = project / "swan.toml"
             path.write_text(path.read_text().replace('left = ["X4"]', 'left = ["JOYSTICK"]'))
             with self.assertRaisesRegex(ManifestError, "unknown inputs"):
+                load_manifest(path)
+
+    def test_input_gestures_and_chords_are_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project("gesture-game", "arcade-action", Path(temporary) / "project")
+            path = project / "swan.toml"
+            path.write_text(path.read_text() + """
+
+[controls.gestures]
+tap_max_frames = 5
+double_tap_window = 9
+hold_threshold = 17
+
+[controls.chords]
+move_fire = ["left", "confirm"]
+""")
+            manifest = load_manifest(path)
+            self.assertEqual(manifest.input_gestures.tap_max_frames, 5)
+            self.assertEqual(manifest.input_gestures.double_tap_window, 9)
+            self.assertEqual(manifest.input_gestures.hold_threshold, 17)
+            self.assertEqual(manifest.input_chords["move_fire"], ("left", "confirm"))
+
+            path.write_text(path.read_text().replace(
+                '["left", "confirm"]', '["left", "missing"]'
+            ))
+            with self.assertRaisesRegex(ManifestError, "unknown actions"):
+                load_manifest(path)
+
+    def test_rejects_invalid_gesture_capacity_and_one_action_chord(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project("bad-gesture", "arcade-action", Path(temporary) / "project")
+            path = project / "swan.toml"
+            original = path.read_text()
+            path.write_text(original + """
+
+[controls.gestures]
+hold_threshold = 256
+""")
+            with self.assertRaisesRegex(ManifestError, "between 1 and 255"):
+                load_manifest(path)
+            path.write_text(original + """
+
+[controls.gestures]
+tap_frames = 4
+""")
+            with self.assertRaisesRegex(ManifestError, "unknown keys"):
+                load_manifest(path)
+            path.write_text(original + """
+
+[controls.chords]
+not_a_chord = ["confirm"]
+""")
+            with self.assertRaisesRegex(ManifestError, "at least two distinct actions"):
+                load_manifest(path)
+            path.write_text(original + """
+
+[controls.chords]
+duplicate = ["left", "confirm", "confirm"]
+""")
+            with self.assertRaisesRegex(ManifestError, "cannot repeat"):
+                load_manifest(path)
+
+            chord_lines = "\n".join(
+                f'chord_{index} = ["left", "confirm"]' for index in range(9)
+            )
+            path.write_text(original + "\n[controls.chords]\n" + chord_lines + "\n")
+            with self.assertRaisesRegex(ManifestError, "capacity of 8"):
                 load_manifest(path)
 
     def test_rejects_release_version_path_traversal(self) -> None:
@@ -95,6 +184,36 @@ class ManifestTests(unittest.TestCase):
                 "audio = true", 'audio = true\naudio_expectation = "silent"', 1
             ))
             with self.assertRaisesRegex(ManifestError, "conflict"):
+                load_manifest(path)
+
+    def test_audio_evidence_thresholds_are_typed_and_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = create_project(
+                "audio-thresholds", "arcade-action", Path(temporary) / "project"
+            )
+            path = project / "swan.toml"
+            text = path.read_text().replace(
+                'audio_expectation = "audible"',
+                'audio_expectation = "audible"\n\n'
+                '[play.scenarios.audio_evidence]\n'
+                'signal_floor = 0.01\n'
+                'max_stereo_balance_delta = 0.15\n'
+                'max_cue_onset_delta_ms = 20\n'
+                'max_silent_frame_ratio_increase = 0.05\n'
+                'max_internal_silence_increase_ms = 12\n'
+                'max_clipped_sample_ratio_increase = 0.0\n'
+                'max_loop_seam_delta_increase = 0.02',
+                1,
+            )
+            path.write_text(text)
+            contract = load_manifest(path).play_scenarios[0].audio_evidence
+            self.assertTrue(contract.configured)
+            self.assertEqual(contract.signal_floor, 0.01)
+            self.assertEqual(contract.max_cue_onset_delta_ms, 20.0)
+            self.assertEqual(contract.to_contract()["maxLoopSeamDeltaIncrease"], 0.02)
+
+            path.write_text(text.replace("signal_floor = 0.01", "signal_floor = 1.01"))
+            with self.assertRaisesRegex(ManifestError, "at most 1"):
                 load_manifest(path)
 
 

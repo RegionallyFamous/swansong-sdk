@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 import re
 import tomllib
@@ -59,6 +60,35 @@ class Scene:
 
 
 @dataclass(frozen=True)
+class AudioEvidenceThresholds:
+    signal_floor: float = 0.0
+    max_stereo_balance_delta: float | None = None
+    max_cue_onset_delta_ms: float | None = None
+    max_silent_frame_ratio_increase: float | None = None
+    max_internal_silence_increase_ms: float | None = None
+    max_clipped_sample_ratio_increase: float | None = None
+    max_loop_seam_delta_increase: float | None = None
+
+    @property
+    def configured(self) -> bool:
+        return self.signal_floor != 0.0 or any(
+            value is not None for name, value in self.__dict__.items()
+            if name != "signal_floor"
+        )
+
+    def to_contract(self) -> dict[str, float | None]:
+        return {
+            "signalFloor": self.signal_floor,
+            "maxStereoBalanceDelta": self.max_stereo_balance_delta,
+            "maxCueOnsetDeltaMs": self.max_cue_onset_delta_ms,
+            "maxSilentFrameRatioIncrease": self.max_silent_frame_ratio_increase,
+            "maxInternalSilenceIncreaseMs": self.max_internal_silence_increase_ms,
+            "maxClippedSampleRatioIncrease": self.max_clipped_sample_ratio_increase,
+            "maxLoopSeamDeltaIncrease": self.max_loop_seam_delta_increase,
+        }
+
+
+@dataclass(frozen=True)
 class PlayScenario:
     id: str
     title: str
@@ -66,6 +96,9 @@ class PlayScenario:
     plan: str
     required_checks: tuple[str, ...]
     audio_expectation: str = "any"
+    audio_evidence: AudioEvidenceThresholds = field(
+        default_factory=AudioEvidenceThresholds
+    )
 
     @property
     def audio(self) -> bool:
@@ -94,6 +127,13 @@ class Resources:
 
 
 @dataclass(frozen=True)
+class InputGestures:
+    tap_max_frames: int = 8
+    double_tap_window: int = 12
+    hold_threshold: int = 20
+
+
+@dataclass(frozen=True)
 class Manifest:
     root: Path
     id: str
@@ -112,8 +152,11 @@ class Manifest:
     save_bytes: int
     rtc: bool
     controls: dict[str, tuple[str, ...]]
+    input_gestures: InputGestures
+    input_chords: dict[str, tuple[str, ...]]
     scenes: tuple[Scene, ...]
     assets: tuple[Asset, ...]
+    play_ready_frames: int
     play_scenarios: tuple[PlayScenario, ...]
     budgets: Budgets = field(default_factory=Budgets)
     resources: Resources = field(default_factory=Resources)
@@ -142,6 +185,22 @@ def _integer(table: dict[str, Any], key: str, *, context: str, default: int) -> 
     if isinstance(value, bool) or not isinstance(value, int):
         raise ManifestError(f"{context}.{key} must be an integer")
     return value
+
+
+def _optional_number(table: dict[str, Any], key: str, *, context: str,
+                     default: float | None = None, maximum: float | None = None
+                     ) -> float | None:
+    value = table.get(key, default)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ManifestError(f"{context}.{key} must be a number")
+    result = float(value)
+    if not math.isfinite(result) or result < 0.0:
+        raise ManifestError(f"{context}.{key} must be a finite nonnegative number")
+    if maximum is not None and result > maximum:
+        raise ManifestError(f"{context}.{key} must be at most {maximum:g}")
+    return result
 
 
 def _identifier(value: str, context: str) -> None:
@@ -238,6 +297,44 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
     if len(controls) > 16:
         raise ManifestError("controls.actions cannot exceed the runtime capacity of 16")
 
+    gesture_table = _table(controls_table, "gestures")
+    gesture_defaults = InputGestures()
+    unknown_gestures = set(gesture_table) - set(InputGestures.__dataclass_fields__)
+    if unknown_gestures:
+        raise ManifestError(
+            f"controls.gestures has unknown keys: {sorted(unknown_gestures)}"
+        )
+    input_gestures = InputGestures(**{
+        name: _integer(
+            gesture_table, name, context="controls.gestures",
+            default=getattr(gesture_defaults, name),
+        )
+        for name in InputGestures.__dataclass_fields__
+    })
+    for name, value in input_gestures.__dict__.items():
+        if not 1 <= value <= 255:
+            raise ManifestError(f"controls.gestures.{name} must be between 1 and 255 frames")
+
+    chords = _table(controls_table, "chords")
+    input_chords: dict[str, tuple[str, ...]] = {}
+    for chord, raw_actions in chords.items():
+        _identifier(chord, f"controls.chords.{chord}")
+        chord_actions = _list_of_strings(raw_actions, f"controls.chords.{chord}")
+        unknown = set(chord_actions) - set(controls)
+        if unknown:
+            raise ManifestError(
+                f"controls.chords.{chord} has unknown actions: {sorted(unknown)}"
+            )
+        if len(set(chord_actions)) != len(chord_actions):
+            raise ManifestError(f"controls.chords.{chord} cannot repeat an action")
+        if len(chord_actions) < 2:
+            raise ManifestError(
+                f"controls.chords.{chord} must contain at least two distinct actions"
+            )
+        input_chords[chord] = chord_actions
+    if len(input_chords) > 8:
+        raise ManifestError("controls.chords cannot exceed the runtime capacity of 8")
+
     raw_scenes = data.get("scenes", [])
     if not isinstance(raw_scenes, list) or not raw_scenes:
         raise ManifestError("at least one [[scenes]] entry is required")
@@ -286,6 +383,11 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
             raise ManifestError(f"scene {scene.id} references unknown assets: {sorted(unknown)}")
 
     play_table = _table(data, "play")
+    play_ready_frames = _integer(
+        play_table, "ready_frames", context="play", default=60
+    )
+    if play_ready_frames <= 0:
+        raise ManifestError("play.ready_frames must be greater than zero")
     raw_scenarios = play_table.get("scenarios", [])
     if not isinstance(raw_scenarios, list):
         raise ManifestError("play.scenarios must be an array of tables")
@@ -321,6 +423,50 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
                 raise ManifestError(
                     f"{context}.audio and audio_expectation conflict"
                 )
+        raw_audio_evidence = item.get("audio_evidence", {})
+        if not isinstance(raw_audio_evidence, dict):
+            raise ManifestError(f"{context}.audio_evidence must be a table")
+        allowed_audio_evidence = {
+            "signal_floor", "max_stereo_balance_delta", "max_cue_onset_delta_ms",
+            "max_silent_frame_ratio_increase", "max_internal_silence_increase_ms",
+            "max_clipped_sample_ratio_increase", "max_loop_seam_delta_increase",
+        }
+        unknown_audio_evidence = set(raw_audio_evidence) - allowed_audio_evidence
+        if unknown_audio_evidence:
+            raise ManifestError(
+                f"{context}.audio_evidence has unknown keys: "
+                f"{sorted(unknown_audio_evidence)}"
+            )
+        audio_evidence = AudioEvidenceThresholds(
+            signal_floor=_optional_number(
+                raw_audio_evidence, "signal_floor", context=f"{context}.audio_evidence",
+                default=0.0, maximum=1.0,
+            ) or 0.0,
+            max_stereo_balance_delta=_optional_number(
+                raw_audio_evidence, "max_stereo_balance_delta",
+                context=f"{context}.audio_evidence", maximum=2.0,
+            ),
+            max_cue_onset_delta_ms=_optional_number(
+                raw_audio_evidence, "max_cue_onset_delta_ms",
+                context=f"{context}.audio_evidence",
+            ),
+            max_silent_frame_ratio_increase=_optional_number(
+                raw_audio_evidence, "max_silent_frame_ratio_increase",
+                context=f"{context}.audio_evidence", maximum=1.0,
+            ),
+            max_internal_silence_increase_ms=_optional_number(
+                raw_audio_evidence, "max_internal_silence_increase_ms",
+                context=f"{context}.audio_evidence",
+            ),
+            max_clipped_sample_ratio_increase=_optional_number(
+                raw_audio_evidence, "max_clipped_sample_ratio_increase",
+                context=f"{context}.audio_evidence", maximum=1.0,
+            ),
+            max_loop_seam_delta_increase=_optional_number(
+                raw_audio_evidence, "max_loop_seam_delta_increase",
+                context=f"{context}.audio_evidence", maximum=2.0,
+            ),
+        )
         scenarios.append(PlayScenario(
             scenario_id,
             _string(item, "title", context=context),
@@ -328,6 +474,7 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
             _string(item, "plan", context=context),
             required_checks,
             audio_expectation,
+            audio_evidence,
         ))
 
     budget_table = _table(data, "budgets")
@@ -355,8 +502,9 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
         manifest_path.parent, project_id, title, version, template, hardware,
         orientation, initial_scene, sdk_version, sdk_revision,
         game_id, publisher_id, cartridge_version,
-        save_type, save_bytes, rtc, controls, tuple(scenes), tuple(assets),
-        tuple(scenarios), budgets, resources,
+        save_type, save_bytes, rtc, controls, input_gestures, input_chords,
+        tuple(scenes), tuple(assets),
+        play_ready_frames, tuple(scenarios), budgets, resources,
     )
 
 

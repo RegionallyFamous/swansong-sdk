@@ -9,7 +9,8 @@ asset conversion, Wonderful invocation, budgets, or play-contract logic.
 
 Desktop should expose one project workspace with:
 
-- New Project, backed by `swan new` and the three recipe identifiers.
+- New Project, backed by `swan new` and the four recipe identifiers, including
+  the non-game `utility-app` starter.
 - Manifest editing with `schema/swan.schema.json` validation and generated
   controls/resource previews.
 - Assets, Build, Test, and Report actions backed by the corresponding `swan`

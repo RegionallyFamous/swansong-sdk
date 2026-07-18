@@ -37,6 +37,9 @@ void swan_core_init(const swan_core_config_t *config) {
     defaults.capabilities = SWAN_HARDWARE_COLOR;
     defaults.input.repeat_delay = 20;
     defaults.input.repeat_period = 5;
+    defaults.input.tap_max_frames = SWAN_INPUT_DEFAULT_TAP_MAX_FRAMES;
+    defaults.input.double_tap_window = SWAN_INPUT_DEFAULT_DOUBLE_TAP_WINDOW;
+    defaults.input.hold_threshold = SWAN_INPUT_DEFAULT_HOLD_THRESHOLD;
     if (config == 0) config = &defaults;
     memset(&core, 0, sizeof(core));
     swan_debug_reset();

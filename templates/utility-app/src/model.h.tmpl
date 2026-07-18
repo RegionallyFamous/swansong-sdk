@@ -1,0 +1,55 @@
+#ifndef @@PROJECT_C_ID@@_MODEL_H
+#define @@PROJECT_C_ID@@_MODEL_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define UTILITY_GRID_COLUMNS 4u
+#define UTILITY_GRID_ROWS 3u
+#define UTILITY_TEXT_COLUMNS 4u
+#define UTILITY_TEXT_ROWS 2u
+#define UTILITY_TEXT_CAPACITY (UTILITY_TEXT_COLUMNS * UTILITY_TEXT_ROWS)
+#define UTILITY_SYMBOL_COUNT (UTILITY_GRID_COLUMNS * UTILITY_GRID_ROWS)
+#define UTILITY_LONG_PRESS_FRAMES 30u
+#define UTILITY_RECORD_FORMAT 1u
+
+typedef enum {
+    UTILITY_OUTCOME_EDITING = 0,
+    UTILITY_OUTCOME_SAVED,
+    UTILITY_OUTCOME_SAVE_ERROR,
+    UTILITY_OUTCOME_RESET
+} utility_outcome_t;
+
+typedef struct {
+    uint8_t format;
+    uint8_t symbols[UTILITY_TEXT_CAPACITY];
+} utility_record_t;
+
+typedef struct {
+    uint8_t grid_column;
+    uint8_t grid_row;
+    uint8_t text_cursor;
+    uint8_t symbols[UTILITY_TEXT_CAPACITY];
+    uint8_t confirm_frames;
+    bool confirm_used_alternate;
+    bool dirty;
+    utility_outcome_t outcome;
+} utility_model_t;
+
+void utility_model_reset(utility_model_t *model);
+void utility_model_move_grid(utility_model_t *model, int8_t dx, int8_t dy);
+void utility_model_move_text(utility_model_t *model, int8_t dx, int8_t dy);
+bool utility_model_update_confirm(utility_model_t *model, bool pressed,
+                                  bool held, bool released);
+bool utility_model_erase(utility_model_t *model);
+bool utility_model_has_text(const utility_model_t *model);
+void utility_model_make_record(const utility_model_t *model,
+                               utility_record_t *record);
+bool utility_model_restore(utility_model_t *model,
+                           const utility_record_t *record);
+void utility_model_reset_document(utility_model_t *model);
+void utility_model_mark_persisted(utility_model_t *model,
+                                  utility_outcome_t outcome);
+void utility_model_mark_save_error(utility_model_t *model);
+
+#endif

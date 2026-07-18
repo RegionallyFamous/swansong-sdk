@@ -42,7 +42,24 @@ def validate_plan(plan: object, path: Path) -> dict[str, Any]:
     return plan
 
 
-def load_plan(root: Path, relative: str) -> tuple[Path, dict[str, Any]]:
+def validate_play_readiness(plan: dict[str, Any], path: Path,
+                            ready_frames: int) -> dict[str, Any]:
+    """Reject gameplay input sent before a project's boot/intro safe point."""
+
+    for event in plan["events"]:
+        if event["inputs"]:
+            frame = event["frameIndex"]
+            if frame < ready_frames:
+                raise PlanError(
+                    f"play plan first non-neutral input at frame {frame} is before "
+                    f"play.ready_frames {ready_frames}: {path}"
+                )
+            break
+    return plan
+
+
+def load_plan(root: Path, relative: str, *,
+              ready_frames: int | None = None) -> tuple[Path, dict[str, Any]]:
     path = (root / relative).resolve()
     try:
         path.relative_to(root)
@@ -54,7 +71,10 @@ def load_plan(root: Path, relative: str) -> tuple[Path, dict[str, Any]]:
         raise PlanError(f"play plan does not exist: {path}") from exc
     except json.JSONDecodeError as exc:
         raise PlanError(f"invalid JSON play plan {path}: {exc}") from exc
-    return path, validate_plan(raw, path)
+    plan = validate_plan(raw, path)
+    if ready_frames is not None:
+        validate_play_readiness(plan, path, ready_frames)
+    return path, plan
 
 
 def load_plan_file(path: Path) -> tuple[Path, dict[str, Any]]:

@@ -31,6 +31,9 @@ static swan_ws_rtc_context_t rtc_boot_context;
 static swan_rtc_backend_t rtc_boot_backend;
 static swan_rtc_status_t rtc_boot_first_status;
 static swan_rtc_status_t rtc_boot_second_status;
+static uint16_t last_frame_tapped;
+static uint16_t last_frame_hold_started;
+static uint16_t last_frame_chords;
 
 void swan_platform_reset_audio_hardware(void) {
     uint8_t channel;
@@ -74,6 +77,9 @@ void swan_scene_enter(swan_scene_id_t scene, uint16_t argument) {
 void swan_scene_update(swan_scene_id_t scene, const struct swan_frame *frame) {
     (void)scene;
     ++update_count;
+    last_frame_tapped = frame->input->actions_tapped;
+    last_frame_hold_started = frame->input->actions_hold_started;
+    last_frame_chords = frame->input->chords_pressed;
     if ((frame->input->actions_pressed & 1u) != 0)
         swan_core_request_scene(1, 42);
 }
@@ -147,6 +153,124 @@ static void test_input(void) {
     CHECK(swan_input_get()->pressed == SWAN_KEY_A);
 }
 
+static void test_input_gestures(void) {
+    swan_input_config_t config;
+    memset(&config, 0, sizeof(config));
+    config.keys[0] = SWAN_KEY_A;
+    config.keys[1] = SWAN_KEY_B;
+    config.keys[2] = SWAN_KEY_X1;
+    config.keys[3] = SWAN_KEY_X2;
+    config.chord_actions[0] = (1u << 0) | (1u << 1);
+    config.chord_actions[1] = (1u << 2); /* Invalid one-action chord is inert. */
+    config.tap_max_frames = 1;
+    config.double_tap_window = 4;
+    config.hold_threshold = 3;
+    swan_input_init(&config);
+
+    swan_input_update(SWAN_KEY_A);
+    CHECK(!swan_action_tapped(0) && !swan_action_double_tapped(0));
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0) && !swan_action_double_tapped(0));
+    CHECK(swan_input_get()->actions_tapped == (1u << 0));
+    swan_input_update(SWAN_KEY_A);
+    CHECK(!swan_action_tapped(0));
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0) && swan_action_double_tapped(0));
+    CHECK(swan_input_get()->actions_double_tapped == (1u << 0));
+    swan_input_update(0);
+    CHECK(swan_input_get()->actions_tapped == 0 &&
+          swan_input_get()->actions_double_tapped == 0);
+
+    swan_input_update(SWAN_KEY_B);
+    CHECK(!swan_action_hold_started(1) && !swan_action_held_long(1));
+    swan_input_update(SWAN_KEY_B);
+    CHECK(!swan_action_hold_started(1));
+    swan_input_update(SWAN_KEY_B);
+    CHECK(swan_action_hold_started(1) && swan_action_held_long(1));
+    swan_input_update(SWAN_KEY_B);
+    CHECK(!swan_action_hold_started(1) && swan_action_held_long(1));
+    swan_input_update(0);
+    CHECK(swan_action_released_after_hold(1));
+    CHECK(!swan_action_tapped(1) && !swan_action_held_long(1));
+    swan_input_update(0);
+    CHECK(!swan_action_released_after_hold(1));
+
+    swan_input_update(SWAN_KEY_X1);
+    swan_input_update(SWAN_KEY_X1);
+    swan_input_update(0);
+    CHECK(!swan_action_tapped(2));
+    CHECK(!swan_action_released_after_hold(2));
+
+    swan_input_update(SWAN_KEY_A | SWAN_KEY_B);
+    CHECK(swan_chord_pressed(0));
+    CHECK(swan_input_get()->chords_pressed == (1u << 0));
+    CHECK(!swan_chord_pressed(1));
+    swan_input_update(SWAN_KEY_A | SWAN_KEY_B);
+    CHECK(!swan_chord_pressed(0));
+    swan_input_update(0);
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(SWAN_KEY_A | SWAN_KEY_B);
+    CHECK(!swan_chord_pressed(0));
+    swan_input_update(0);
+
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(0);
+    swan_input_update(0);
+    swan_input_update(0);
+    swan_input_update(0);
+    swan_input_update(0);
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0) && !swan_action_double_tapped(0));
+
+    swan_input_drain();
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0) && !swan_action_double_tapped(0));
+
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(SWAN_KEY_A);
+    CHECK(swan_action_hold_started(0));
+    swan_input_update(0);
+    CHECK(swan_action_released_after_hold(0));
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0) && !swan_action_double_tapped(0));
+
+    swan_input_update(SWAN_KEY_B);
+    swan_input_update(SWAN_KEY_B);
+    swan_input_update(SWAN_KEY_B);
+    CHECK(swan_action_held_long(1));
+    swan_input_drain();
+    CHECK(!swan_action_held_long(1));
+    swan_input_update(0);
+    CHECK(!swan_action_released_after_hold(1));
+    CHECK(!swan_action_tapped(SWAN_ACTION_CAPACITY));
+    CHECK(!swan_action_held_long(SWAN_ACTION_CAPACITY));
+    CHECK(!swan_chord_pressed(SWAN_INPUT_CHORD_CAPACITY));
+
+    memset(&config, 0, sizeof(config));
+    config.keys[0] = SWAN_KEY_A | SWAN_KEY_X1;
+    config.tap_max_frames = 1;
+    config.hold_threshold = 4;
+    swan_input_init(&config);
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(SWAN_KEY_A | SWAN_KEY_X1);
+    swan_input_update(SWAN_KEY_X1);
+    CHECK(swan_action_held(0));
+    CHECK(!swan_action_tapped(0) && !swan_action_released_after_hold(0));
+    swan_input_update(0);
+    CHECK(!swan_action_tapped(0) && !swan_action_released_after_hold(0));
+
+    memset(&config, 0, sizeof(config));
+    config.keys[0] = SWAN_KEY_A;
+    swan_input_init(&config);
+    swan_input_update(SWAN_KEY_A);
+    swan_input_update(0);
+    CHECK(swan_action_tapped(0));
+}
+
 static void test_wswan_keys(void) {
     CHECK(swan_ws_translate_keys(0x0002u) == SWAN_KEY_START);
     CHECK(swan_ws_translate_keys(0x000Cu) == (SWAN_KEY_A | SWAN_KEY_B));
@@ -171,9 +295,15 @@ static void test_core_and_scenes(void) {
     config.capabilities = SWAN_HARDWARE_COLOR;
     config.vertical = true;
     config.input.keys[0] = SWAN_KEY_A;
+    config.input.keys[1] = SWAN_KEY_B;
     config.input.repeat_delay = 20;
     config.input.repeat_period = 5;
+    config.input.chord_actions[0] = (1u << 0) | (1u << 1);
+    config.input.tap_max_frames = 2;
+    config.input.double_tap_window = 4;
+    config.input.hold_threshold = 3;
     boot_count = enter_count = update_count = render_count = exit_count = 0;
+    last_frame_tapped = last_frame_hold_started = last_frame_chords = 0;
     swan_core_init(&config);
     CHECK(boot_count == 1 && enter_count == 1 && last_argument == 7);
     CHECK(swan_core_vertical());
@@ -186,6 +316,11 @@ static void test_core_and_scenes(void) {
     CHECK(render_count == 2);
     swan_core_step(SWAN_KEY_A);
     CHECK(render_count == 2);
+    CHECK(last_frame_hold_started == 0);
+    swan_core_step(0);
+    CHECK(last_frame_tapped == (1u << 0));
+    swan_core_step(SWAN_KEY_A | SWAN_KEY_B);
+    CHECK(last_frame_chords == (1u << 0));
     swan_audio_play_music(&reset_song);
     CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_MUSIC);
     reset_count = platform_audio_reset_count;
@@ -543,6 +678,7 @@ int main(void) {
     test_debug();
     test_random();
     test_input();
+    test_input_gestures();
     test_wswan_keys();
     test_core_and_scenes();
     test_legacy_helpers();
