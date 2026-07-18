@@ -7,7 +7,9 @@ import tempfile
 import unittest
 import wave
 
-from swansong_sdk.evidence import EvidenceThresholds, diff_evidence, diff_png, diff_wav
+from swansong_sdk.evidence import (
+    EvidenceThresholds, diff_evidence, diff_png, diff_wav, validate_wav,
+)
 from swansong_sdk.fuzzing import evaluate_trace, generate_fuzz_plan
 from swansong_sdk.laboratory import JournalModel, run_laboratory
 from swansong_sdk.optimize import encode_rgba_png, preview_asset_optimization
@@ -22,11 +24,14 @@ from swansong_sdk.scenario import (
 )
 
 
-def _write_wave(path: Path, samples: list[int]) -> None:
+def _write_wave(path: Path, samples: list[int], *, channels: int = 1,
+                frame_rate: int = 8000) -> None:
+    if len(samples) % channels:
+        raise ValueError("interleaved samples must contain complete frames")
     with wave.open(str(path), "wb") as output:
-        output.setnchannels(1)
+        output.setnchannels(channels)
         output.setsampwidth(2)
-        output.setframerate(8000)
+        output.setframerate(frame_rate)
         output.writeframes(b"".join(value.to_bytes(2, "little", signed=True)
                                     for value in samples))
 
@@ -162,6 +167,82 @@ class EvidenceTests(unittest.TestCase):
             self.assertTrue(result["meaningfulDifference"])
             self.assertEqual(result["metadata"]["changes"][0]["path"], "$.raster")
             json.dumps(result, sort_keys=True)
+
+    def test_wav_reports_stereo_cue_silence_clipping_and_seam_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            wav = Path(temporary) / "stereo.wav"
+            _write_wave(wav, [
+                0, 0,
+                0, 0,
+                1000, 0,
+                0, 0,
+                0, 0,
+                32767, 0,
+            ], channels=2, frame_rate=1000)
+            first = validate_wav(wav, signal_floor=0.01)
+            second = validate_wav(wav, signal_floor=0.01)
+
+            self.assertEqual(first, second)
+            self.assertEqual(first["cueOnsetFrame"], 2)
+            self.assertEqual(first["cueOnsetMs"], 2.0)
+            self.assertEqual(first["maximumInternalSilenceFrames"], 2)
+            self.assertEqual(first["clippedSamples"], 1)
+            self.assertEqual(first["stereo"]["balance"], -1.0)
+            self.assertEqual(first["stereo"]["dominantChannel"], "left")
+            self.assertGreater(first["maximumLoopSeam"], 0.99)
+
+    def test_wav_semantic_regressions_survive_tolerant_pcm_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            before = root / "before.wav"
+            after = root / "after.wav"
+            _write_wave(before, [
+                0, 0,
+                2000, 2000,
+                2000, 2000,
+                2000, 2000,
+                2000, 2000,
+                2000, 2000,
+                2000, 2000,
+                0, 0,
+            ], channels=2, frame_rate=1000)
+            _write_wave(after, [
+                0, 0,
+                0, 0,
+                0, 0,
+                0, 2000,
+                0, 0,
+                0, 0,
+                0, 32767,
+                0, 2000,
+            ], channels=2, frame_rate=1000)
+            audio = diff_wav(before, after, EvidenceThresholds(
+                pcm_sample_tolerance=32767,
+                changed_sample_ratio=1.0,
+                normalized_rms_delta=1.0,
+                audio_signal_floor=0.01,
+                stereo_balance_delta=0.1,
+                cue_onset_delta_ms=0.5,
+                silent_frame_ratio_increase=0.1,
+                internal_silence_increase_ms=0.5,
+                clipped_sample_ratio_increase=0.0,
+                loop_seam_delta_increase=0.01,
+            ))
+
+            self.assertTrue(audio["meaningfulDifference"])
+            self.assertTrue(audio["regressions"]["configured"])
+            self.assertTrue(audio["regressions"]["detected"])
+            checks = audio["regressions"]["checks"]
+            self.assertTrue(all(checks[name]["regression"] for name in (
+                "stereoBalance", "cueOnset", "silentFrames", "internalSilence",
+                "clipping", "loopSeam",
+            )))
+
+    def test_wav_semantic_thresholds_are_opt_in(self) -> None:
+        limits = EvidenceThresholds()
+        self.assertIsNone(limits.stereo_balance_delta)
+        self.assertIsNone(limits.cue_onset_delta_ms)
+        self.assertIsNone(limits.loop_seam_delta_increase)
 
     def test_structured_diff_detects_added_empty_container(self) -> None:
         from swansong_sdk.evidence import diff_metadata

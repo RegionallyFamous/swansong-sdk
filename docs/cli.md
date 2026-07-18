@@ -17,9 +17,12 @@ compatible build while allowing both Color tile banks where safe.
 
 ## `swan new NAME --template RECIPE`
 
-Creates a new, nonempty game scaffold. Names use lowercase kebab-case. Recipes
-are `arcade-action`, `menu-puzzle`, and `grid-tactics`. `--directory` selects a
-different destination; existing nonempty directories are never overwritten.
+Creates a new, nonempty game or utility scaffold. Names use lowercase
+kebab-case. Recipes are `arcade-action`, `menu-puzzle`, `grid-tactics`, and
+`utility-app`. The utility recipe demonstrates fixed-capacity text entry,
+orientation-aware dual-cluster navigation, held-button alternatives, journaled
+EEPROM saves, and persistent reset. `--directory` selects a different
+destination; existing nonempty directories are never overwritten.
 
 ## `swan assets [--project PATH]`
 
@@ -58,7 +61,9 @@ Loads a declared fresh-boot frame plan and sends it exclusively to SwanSong's
 `swansong_playtest_plan` MCP tool. It requires screenshot, WAV, and structured
 evidence, verifies an identical second replay by default, and stores the media
 under `build/swansong`. `--no-verify-replay` is intended only for interactive
-diagnosis and must not be used for an acceptance result.
+diagnosis and must not be used for an acceptance result. Before execution,
+SwanSong rejects any declared scenario whose first non-neutral input precedes
+the manifest's `[play].ready_frames` boot/intro boundary.
 
 ## swan doctor
 
@@ -229,7 +234,7 @@ Checkpoint annotations use this contract:
 
 ## swan evidence-diff
 
-Usage: swan evidence-diff --before DIR --after DIR [--json]
+Usage: swan evidence-diff --before DIR --after DIR [--scenario ID] [--json]
 
 Compares both directories' `frame.png`, `audio.wav`, and `evidence.json`.
 Pixels and uncompressed PCM samples are decoded and measured; hashes are only
@@ -238,12 +243,32 @@ sample delta, changed-sample ratio, and RMS delta. `--fail-on-difference`
 turns a meaningful change into a regression gate. JSON uses
 `swansong-evidence-diff-v1`.
 
+With `--scenario ID`, the command loads that scenario's optional
+`[play.scenarios.audio_evidence]` limits from the nearest manifest; use
+`--project PATH` to select a different `swan.toml`. Command-line audio flags
+override individual declared values. Available semantic flags are
+`--audio-floor`, `--stereo-balance-delta`, `--cue-onset-delta-ms`,
+`--silent-frame-ratio-increase`, `--internal-silence-increase-ms`,
+`--clipped-sample-ratio-increase`, and `--loop-seam-delta-increase`.
+
+The WAV report always includes the measurements. A semantic rule affects the
+verdict only when its maximum is declared or passed explicitly. Stereo balance
+uses signed energy (`-1` left, `0` centered, `1` right); silence is a frame where
+every channel is at or below the floor; an internal dropout excludes leading
+and trailing silence; clipping means an exact PCM rail value; and the loop seam
+is the largest normalized difference between each channel's final and initial
+sample. `--fail-on-difference` fails for either the existing decoded-media rules
+or an enabled semantic audio regression.
+
 ## swan fuzz
 
 Usage: swan fuzz --project PATH --seed N --cases N --frames N [--json]
 
 Generates deterministic valid input plans, runs a neutral baseline and every
 case through SwanSong, and requires an identical fresh-boot replay for each.
+Generated input begins at `[play].ready_frames` by default. An explicit
+`--neutral-boot-frames` may move it later, but never before the declared
+boot/intro boundary.
 Crashes, execution failures, and reset divergence fail the run. A case ending
 on the neutral raster is marked for PNG/WAV review, not automatically called a
 dead end. A transport-clean run returns `review`, never `pass`, until a person

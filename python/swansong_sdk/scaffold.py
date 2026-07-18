@@ -9,7 +9,7 @@ from .layout import LayoutError, sdk_root
 from .manifest import PROJECT_ID
 
 
-RECIPES = ("arcade-action", "menu-puzzle", "grid-tactics")
+RECIPES = ("arcade-action", "menu-puzzle", "grid-tactics", "utility-app")
 
 
 class ScaffoldError(RuntimeError):

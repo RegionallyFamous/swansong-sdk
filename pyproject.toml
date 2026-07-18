@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swansong-sdk"
-version = "0.3.1"
+version = "0.4.0"
 description = "Deterministic WonderSwan game framework tooling"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -75,9 +75,11 @@ where = ["python"]
   "docs/cli.md",
   "docs/framework-feedback-loop.md",
   "docs/getting-started.md",
+  "docs/input-gestures.md",
   "docs/manifest.md",
   "docs/release-notes-0.3.0.md",
   "docs/release-notes-0.3.1.md",
+  "docs/release-notes-0.4.0.md",
   "docs/supply-chain.md",
   "docs/swansong-desktop-integration.md",
   "docs/visual-authoring.md",
@@ -127,4 +129,22 @@ where = ["python"]
   "templates/grid-tactics/tests/play/interaction.json.tmpl",
   "templates/grid-tactics/tests/play/reset.json.tmpl",
   "templates/grid-tactics/tests/play/success.json.tmpl",
+]
+"share/swansong-sdk/templates/utility-app" = [
+  "templates/utility-app/README.md.tmpl",
+  "templates/utility-app/swan.toml.tmpl",
+]
+"share/swansong-sdk/templates/utility-app/assets/audio" = ["templates/utility-app/assets/audio/commit.toml.tmpl"]
+"share/swansong-sdk/templates/utility-app/src" = [
+  "templates/utility-app/src/game.c.tmpl",
+  "templates/utility-app/src/model.c.tmpl",
+  "templates/utility-app/src/model.h.tmpl",
+]
+"share/swansong-sdk/templates/utility-app/tests/host" = ["templates/utility-app/tests/host/test_model.c.tmpl"]
+"share/swansong-sdk/templates/utility-app/tests/play" = [
+  "templates/utility-app/tests/play/failure.json.tmpl",
+  "templates/utility-app/tests/play/interaction.json.tmpl",
+  "templates/utility-app/tests/play/neutral.json.tmpl",
+  "templates/utility-app/tests/play/reset.json.tmpl",
+  "templates/utility-app/tests/play/success.json.tmpl",
 ]

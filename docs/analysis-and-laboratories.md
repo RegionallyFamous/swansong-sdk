@@ -66,13 +66,31 @@ JSON contracts live under `schema/`.
 `swansong-evidence-diff-v1`. PNG comparison reports dimensions, SHA-256,
 unique colors, transparency, changed pixels, ratio, bounding box, and channel
 deltas. WAV comparison accepts uncompressed 8/16/24/32-bit PCM and reports
-format metadata, peak/RMS amplitude, changed samples, and PCM deltas.
+format metadata, peak/RMS amplitude, changed samples, and PCM deltas. Its
+additive audio inspection block also reports per-channel energy, signed stereo
+balance, cue onset, leading/trailing silence, longest internal dropout, exact
+full-scale clipping, and end-to-start loop discontinuity.
 
 `EvidenceThresholds` controls channel/sample tolerances, changed pixel/sample
 ratios, and normalized RMS delta. Defaults are exact. The report always keeps
 exact measurements even when a configured threshold classifies the difference
 as non-meaningful. Structured evidence mappings are flattened and compared by
 stable JSON paths.
+
+Semantic audio gates are optional additions to `EvidenceThresholds`. They bound
+stereo-balance change, cue-onset shift, increases in silent-frame ratio and the
+longest internal silent run, increases in clipping, and increased loop-seam
+discontinuity. A missing candidate cue is a regression whenever the cue-onset
+gate is enabled. Improvements do not fail increase-only gates. Each check is
+returned with `enabled`, `applicable`, baseline/candidate values, delta, limit,
+and verdict so Studio and agents can explain the decision instead of relying on
+one hash or one aggregate volume number.
+
+Analysis is deterministic and linear in the decoded capture. It uses integer
+sample energies and run counters, retains no sliding windows, and rounds public
+ratios at fixed precision. `audio_signal_floor` is converted once to an integer
+PCM amplitude before frames are classified, so all cue and silence metrics use
+the same declared floor.
 
 ## Generate and judge fuzz traces
 

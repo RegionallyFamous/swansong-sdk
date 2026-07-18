@@ -206,6 +206,23 @@ class ToolCliTests(unittest.TestCase):
             written = json.loads((project / "build/replay.json").read_text())
             self.assertEqual(written, report)
 
+    def test_declared_replay_rejects_input_before_project_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = _new_project(Path(temporary))
+            plan = project / "tests/play/interaction.json"
+            plan.write_text(plan.read_text().replace(
+                '"frameIndex": 120, "inputs": ["a"]',
+                '"frameIndex": 119, "inputs": ["a"]',
+                1,
+            ))
+            status, report = _json_command([
+                "replay", "--project", str(project / "swan.toml"),
+                "--scenario", "interaction",
+            ])
+            self.assertEqual(status, 2)
+            self.assertEqual(report["schema"], "swansong-replay-report-v1")
+            self.assertIn("play.ready_frames 120", report["error"]["message"])
+
     def test_minimize_and_replay_errors_keep_stable_json_schemas(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             project = _new_project(Path(temporary))
@@ -240,6 +257,38 @@ class ToolCliTests(unittest.TestCase):
             self.assertEqual(report["png"]["changedPixels"], 1)
             self.assertEqual(report["wav"]["changedSamples"], 1)
 
+    def test_evidence_diff_uses_scenario_audio_regression_limits(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = _new_project(root)
+            manifest = project / "swan.toml"
+            manifest.write_text(manifest.read_text().replace(
+                'required_checks = ["title state is visually distinct", "frame is stable", '
+                '"no crash or hang"]',
+                'required_checks = ["title state is visually distinct", "frame is stable", '
+                '"no crash or hang"]\n\n'
+                '[play.scenarios.audio_evidence]\n'
+                'signal_floor = 0.001\n'
+                'max_cue_onset_delta_ms = 0',
+                1,
+            ))
+            before, after = root / "before", root / "after"
+            _write_evidence(before, color=0, sample=100)
+            _write_evidence(after, color=0, sample=0)
+
+            status, report = _json_command([
+                "evidence-diff", "--before", str(before), "--after", str(after),
+                "--project", str(manifest), "--scenario", "neutral",
+                "--sample-tolerance", "100", "--sample-ratio", "1",
+                "--rms-delta", "1", "--fail-on-difference",
+            ])
+
+            self.assertEqual(status, 1)
+            self.assertEqual(report["thresholds"]["audioSignalFloor"], 0.001)
+            cue = report["wav"]["regressions"]["checks"]["cueOnset"]
+            self.assertTrue(cue["enabled"])
+            self.assertTrue(cue["regression"])
+
     def test_corrupt_evidence_png_returns_stable_json_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -259,7 +308,7 @@ class ToolCliTests(unittest.TestCase):
             project = _new_project(Path(temporary))
             arguments = [
                 "fuzz", "--project", str(project / "swan.toml"),
-                "--seed", "41", "--cases", "2", "--frames", "100",
+                "--seed", "41", "--cases", "2", "--frames", "180",
                 "--generate-only",
             ]
             first_status, first = _json_command(arguments)
@@ -267,7 +316,23 @@ class ToolCliTests(unittest.TestCase):
             self.assertEqual((first_status, second_status), (0, 0))
             self.assertEqual(first, second)
             self.assertEqual(first["schema"], "swansong-fuzz-report-v1")
+            self.assertEqual(first["readyFrames"], 120)
             self.assertEqual(len(first["cases"]), 2)
+            for case in first["cases"]:
+                pressed = [
+                    event["frameIndex"] for event in case["plan"]["events"]
+                    if event["inputs"]
+                ]
+                self.assertTrue(pressed)
+                self.assertGreaterEqual(pressed[0], first["readyFrames"])
+
+            status, error = _json_command([
+                "fuzz", "--project", str(project / "swan.toml"),
+                "--frames", "180", "--neutral-boot-frames", "119",
+                "--generate-only",
+            ])
+            self.assertEqual(status, 2)
+            self.assertIn("play.ready_frames 120", error["error"]["message"])
 
     def test_fuzz_executes_baseline_and_cases_through_swansong(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

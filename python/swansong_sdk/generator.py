@@ -247,6 +247,12 @@ def _controls_header(manifest: Manifest) -> str:
     ]
     lines.extend(f"    SWAN_ACTION_{c_name(action)} = {index}," for index, action in enumerate(manifest.controls))
     lines.extend((f"    SWAN_ACTION_COUNT = {len(manifest.controls)}", "};", ""))
+    lines.append("enum swan_generated_chord_id {")
+    lines.extend(
+        f"    SWAN_CHORD_{c_name(chord)} = {index},"
+        for index, chord in enumerate(manifest.input_chords)
+    )
+    lines.extend((f"    SWAN_CHORD_COUNT = {len(manifest.input_chords)}", "};", ""))
     for action, inputs in manifest.controls.items():
         expression = " | ".join(INPUT_BITS[item] for item in inputs)
         lines.append(f"#define SWAN_ACTION_BINDING_{c_name(action)} ({expression})")
@@ -441,9 +447,16 @@ def _config_source(manifest: Manifest) -> str:
     action_lines = []
     for index, inputs in enumerate(manifest.controls.values()):
         action_lines.append(f"            [{index}] = " + " | ".join(INPUT_BITS[item] for item in inputs) + ",")
+    chord_lines = []
+    for index, actions in enumerate(manifest.input_chords.values()):
+        expression = " | ".join(
+            f"(1u << SWAN_ACTION_{c_name(action)})" for action in actions
+        )
+        chord_lines.append(f"            [{index}] = {expression},")
     return "\n".join((
         "/* Generated project configuration. The SDK owns the platform entry point. */",
-        "#include <swan/swan.h>", "#include \"swan_project.h\"", "",
+        "#include <swan/swan.h>", "#include \"swan_project.h\"",
+        "#include \"swan_controls.h\"", "",
         "const swan_build_identity_t swan_game_build_identity = {",
         "    SWAN_VERSION_STRING, SWAN_MANIFEST_SCHEMA_VERSION,",
         "    SWAN_PROJECT_ID, SWAN_PROJECT_VERSION",
@@ -459,6 +472,12 @@ def _config_source(manifest: Manifest) -> str:
         "        },",
         "        .repeat_delay = 20,",
         "        .repeat_period = 5,",
+        "        .chord_actions = {",
+        *chord_lines,
+        "        },",
+        f"        .tap_max_frames = {manifest.input_gestures.tap_max_frames},",
+        f"        .double_tap_window = {manifest.input_gestures.double_tap_window},",
+        f"        .hold_threshold = {manifest.input_gestures.hold_threshold},",
         "    },",
         "};", "",
     ))
@@ -490,6 +509,18 @@ def _resource_header(manifest: Manifest, compiled: tuple[CompiledAsset, ...]) ->
 def _controls_markdown(manifest: Manifest) -> str:
     lines = [f"# {manifest.title} controls", "", "This file is generated from `swan.toml`.", "", "| Action | Physical inputs |", "|---|---|"]
     lines.extend(f"| `{action}` | {' + '.join(inputs)} |" for action, inputs in manifest.controls.items())
+    lines.extend((
+        "", "## Gesture timing", "",
+        f"- Tap: release within {manifest.input_gestures.tap_max_frames} sampled frames.",
+        f"- Double tap: complete the second tap within {manifest.input_gestures.double_tap_window} sampled frames.",
+        f"- Hold: begins on sampled frame {manifest.input_gestures.hold_threshold}.",
+    ))
+    if manifest.input_chords:
+        lines.extend(("", "## Same-frame chords", "", "| Chord | Actions |", "|---|---|"))
+        lines.extend(
+            f"| `{chord}` | {' + '.join(actions)} |"
+            for chord, actions in manifest.input_chords.items()
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -498,7 +529,17 @@ def _play_contract(manifest: Manifest) -> dict[str, object]:
     return {
         "schema": "swan-song-game-contract-v1",
         "game": {"id": manifest.id, "title": manifest.title, "rom": manifest.rom_name},
+        "readyFrames": manifest.play_ready_frames,
         "controls": {key: list(value) for key, value in manifest.controls.items()},
+        "inputGestures": {
+            "tapMaxFrames": manifest.input_gestures.tap_max_frames,
+            "doubleTapWindow": manifest.input_gestures.double_tap_window,
+            "holdThreshold": manifest.input_gestures.hold_threshold,
+            "chords": {
+                key: list(value) for key, value in manifest.input_chords.items()
+            },
+            "sameFrameChords": True,
+        },
         "scenarios": [
             {
                 "id": scenario.id,
@@ -508,6 +549,10 @@ def _play_contract(manifest: Manifest) -> dict[str, object]:
                 "requiredChecks": list(scenario.required_checks),
                 "requiresAudioEvidence": scenario.audio,
                 "audioExpectation": scenario.audio_expectation,
+                **(
+                    {"audioEvidence": scenario.audio_evidence.to_contract()}
+                    if scenario.audio_evidence.configured else {}
+                ),
                 "freshBoot": True,
                 "requiresMediaInspection": True,
             }
@@ -584,7 +629,10 @@ def validate_budgets(manifest: Manifest, report: dict[str, object], *, rom_path:
 def generate(manifest: Manifest) -> tuple[CompiledAsset, ...]:
     try:
         for scenario in manifest.play_scenarios:
-            load_plan(manifest.root, scenario.plan)
+            load_plan(
+                manifest.root, scenario.plan,
+                ready_frames=manifest.play_ready_frames,
+            )
     except PlanError as exc:
         raise GenerationError(str(exc)) from exc
     compiled = compile_assets(manifest)

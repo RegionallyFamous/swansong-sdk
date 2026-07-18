@@ -32,9 +32,11 @@ swan lab --json
 swan release
 ```
 
-Available recipes are `arcade-action`, `menu-puzzle`, and `grid-tactics`. Every
-recipe includes a portable gameplay model, host tests, cartridge callbacks,
-resource budgets, and fresh-boot SwanSong contracts.
+Available recipes are `arcade-action`, `menu-puzzle`, `grid-tactics`, and
+`utility-app`. The utility recipe adds orientation-aware dual-cluster text-grid
+entry, tap/hold alternatives, transactional EEPROM records, and explicit
+save/reset outcomes. Every recipe includes a portable model, host tests,
+cartridge callbacks, resource budgets, and fresh-boot SwanSong contracts.
 
 `swan doctor` audits the complete SDK, toolchain, project, generated config,
 and SwanSong interface. `swan dev` watches project inputs and reruns a declared
@@ -68,11 +70,12 @@ ROM without project-specific framework changes.
   advisory warnings.
 
 See [Getting started](docs/getting-started.md), the
-[`swan.toml` reference](docs/manifest.md), [CLI reference](docs/cli.md), and
+[`swan.toml` reference](docs/manifest.md), [input gesture guide](docs/input-gestures.md),
+[CLI reference](docs/cli.md), and
 [SwanSong Desktop integration contract](docs/swansong-desktop-integration.md).
 Framework contributors should also follow the [feedback loop](docs/framework-feedback-loop.md)
 and [contribution guide](AGENTS.md). Release engineers should read the
-[supply-chain contract](docs/supply-chain.md) and [0.3.1 release notes](docs/release-notes-0.3.1.md).
+[supply-chain contract](docs/supply-chain.md) and [0.4.0 release notes](docs/release-notes-0.4.0.md).
 
 ## Status
 

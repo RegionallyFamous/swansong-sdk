@@ -41,7 +41,10 @@ class CanaryTests(unittest.TestCase):
                 if any(asset.type == "music" for asset in manifest.assets):
                     self.assertEqual(reset_scenario.audio_expectation, "silent")
                 for scenario in manifest.play_scenarios:
-                    load_plan(root, scenario.plan)
+                    load_plan(
+                        root, scenario.plan,
+                        ready_frames=manifest.play_ready_frames,
+                    )
                 art_assets = [item for item in manifest.assets
                               if item.type in {"fullscreen", "spritesheet"}]
                 self.assertEqual(len(art_assets), 2)

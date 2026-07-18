@@ -33,7 +33,9 @@ from .minimize import (
     FailureObservation, MinimizeError, minimize_plan,
     observe_evidence, observe_execution_error, validate_failure_predicate,
 )
-from .plans import PlanError, load_plan, load_plan_file
+from .plans import (
+    PlanError, load_plan, load_plan_file, validate_play_readiness,
+)
 from .png2bpp import PNGError
 from .profiler import ProfileError, profile_resources
 from .replay import ReplayError, build_replay_report, evidence_binding, validate_checkpoints
@@ -195,7 +197,9 @@ def command_play(args: argparse.Namespace) -> None:
     if scenario is None:
         choices = ", ".join(item.id for item in manifest.play_scenarios) or "none declared"
         raise CommandError(f"unknown scenario {args.scenario!r}; available: {choices}")
-    _, plan = load_plan(manifest.root, scenario.plan)
+    _, plan = load_plan(
+        manifest.root, scenario.plan, ready_frames=manifest.play_ready_frames
+    )
     rom = _rom_path(manifest)
     if not rom.is_file():
         raise CommandError(f"ROM is not built: {rom}; run swan build first")
@@ -572,6 +576,7 @@ def _parse_evidence_argument(value: str) -> tuple[str, Path]:
 def command_replay(args: argparse.Namespace) -> None:
     manifest = _manifest(args.project)
     scenario_metadata: dict[str, object] | None = None
+    scenario_ready_frames: int | None = None
     plan_argument = args.plan
     if args.scenario:
         scenario = next(
@@ -584,6 +589,7 @@ def command_replay(args: argparse.Namespace) -> None:
             )
         if plan_argument is None:
             plan_argument = str(manifest.root / scenario.plan)
+        scenario_ready_frames = manifest.play_ready_frames
         scenario_metadata = {
             "id": scenario.id,
             "title": scenario.title,
@@ -591,10 +597,16 @@ def command_replay(args: argparse.Namespace) -> None:
             "requiredChecks": list(scenario.required_checks),
             "requiresAudioEvidence": scenario.audio,
             "audioExpectation": scenario.audio_expectation,
+            **(
+                {"audioEvidence": scenario.audio_evidence.to_contract()}
+                if scenario.audio_evidence.configured else {}
+            ),
         }
     if plan_argument is None:
         raise CommandError("swan replay requires --plan or --scenario")
     plan_path, plan = load_plan_file(Path(plan_argument))
+    if scenario_ready_frames is not None:
+        validate_play_readiness(plan, plan_path, scenario_ready_frames)
     checkpoints = None
     checkpoint_path = None
     if args.checkpoints:
@@ -657,12 +669,55 @@ def command_evidence_diff(args: argparse.Namespace) -> int:
     after_dir = Path(args.after).resolve()
     before_png, before_wav, before_metadata = _evidence_files(before_dir)
     after_png, after_wav, after_metadata = _evidence_files(after_dir)
+    scenario_audio = None
+    if args.scenario:
+        manifest = _manifest(args.project)
+        scenario = next(
+            (item for item in manifest.play_scenarios if item.id == args.scenario), None
+        )
+        if scenario is None:
+            choices = ", ".join(item.id for item in manifest.play_scenarios)
+            raise CommandError(
+                f"unknown scenario {args.scenario!r}; available: {choices or 'none declared'}"
+            )
+        scenario_audio = scenario.audio_evidence
+    elif args.project:
+        raise CommandError("evidence-diff --project requires --scenario")
+
+    def audio_limit(argument: str, contract: str, default: float | None = None
+                    ) -> float | None:
+        value = getattr(args, argument)
+        if value is not None:
+            return value
+        if scenario_audio is not None:
+            return getattr(scenario_audio, contract)
+        return default
+
     thresholds = EvidenceThresholds(
         pixel_channel_tolerance=args.pixel_tolerance,
         changed_pixel_ratio=args.pixel_ratio,
         pcm_sample_tolerance=args.sample_tolerance,
         changed_sample_ratio=args.sample_ratio,
         normalized_rms_delta=args.rms_delta,
+        audio_signal_floor=audio_limit("audio_floor", "signal_floor", 0.0) or 0.0,
+        stereo_balance_delta=audio_limit(
+            "stereo_balance_delta", "max_stereo_balance_delta"
+        ),
+        cue_onset_delta_ms=audio_limit(
+            "cue_onset_delta_ms", "max_cue_onset_delta_ms"
+        ),
+        silent_frame_ratio_increase=audio_limit(
+            "silent_frame_ratio_increase", "max_silent_frame_ratio_increase"
+        ),
+        internal_silence_increase_ms=audio_limit(
+            "internal_silence_increase_ms", "max_internal_silence_increase_ms"
+        ),
+        clipped_sample_ratio_increase=audio_limit(
+            "clipped_sample_ratio_increase", "max_clipped_sample_ratio_increase"
+        ),
+        loop_seam_delta_increase=audio_limit(
+            "loop_seam_delta_increase", "max_loop_seam_delta_increase"
+        ),
     )
     report = diff_evidence(
         before_png=before_png,
@@ -700,11 +755,20 @@ def command_fuzz(args: argparse.Namespace) -> int:
         raise CommandError("fuzz cases must be positive")
     if not 1 <= args.frames <= 12_000:
         raise CommandError("fuzz frames must be between 1 and 12000")
+    neutral_boot_frames = (
+        manifest.play_ready_frames
+        if args.neutral_boot_frames is None else args.neutral_boot_frames
+    )
+    if neutral_boot_frames < manifest.play_ready_frames:
+        raise CommandError(
+            f"fuzz neutral boot frames {neutral_boot_frames} cannot precede "
+            f"play.ready_frames {manifest.play_ready_frames}"
+        )
     generated = [
         generate_fuzz_plan(
             seed=(args.seed + index) & 0xFFFFFFFF,
             total_frames=args.frames,
-            neutral_boot_frames=min(args.neutral_boot_frames, args.frames),
+            neutral_boot_frames=min(neutral_boot_frames, args.frames),
             maximum_actions=args.maximum_actions,
         ).to_dict()
         for index in range(args.cases)
@@ -715,6 +779,7 @@ def command_fuzz(args: argparse.Namespace) -> int:
         "seed": args.seed,
         "casesRequested": args.cases,
         "framesPerCase": args.frames,
+        "readyFrames": manifest.play_ready_frames,
         "mode": "generation" if args.generate_only else "swansong-execution",
         "verdict": "ready" if args.generate_only else "review",
         "checks": {
@@ -901,7 +966,7 @@ def command_lab(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="swan", description="Build deterministic WonderSwan games with SwanSong SDK")
-    result.add_argument("--version", action="version", version="swan 0.3.1")
+    result.add_argument("--version", action="version", version="swan 0.4.0")
     commands = result.add_subparsers(dest="command", required=True)
 
     sdk_path_parser = commands.add_parser(
@@ -1065,11 +1130,27 @@ def parser() -> argparse.ArgumentParser:
     )
     evidence.add_argument("--before", required=True, help="baseline evidence directory")
     evidence.add_argument("--after", required=True, help="candidate evidence directory")
+    evidence.add_argument("--project", help="path to swan.toml for scenario audio limits")
+    evidence.add_argument("--scenario", help="play scenario declaring audio evidence limits")
     evidence.add_argument("--pixel-tolerance", type=int, default=0)
     evidence.add_argument("--pixel-ratio", type=float, default=0.0)
     evidence.add_argument("--sample-tolerance", type=int, default=0)
     evidence.add_argument("--sample-ratio", type=float, default=0.0)
     evidence.add_argument("--rms-delta", type=float, default=0.0)
+    evidence.add_argument("--audio-floor", type=float,
+                          help="normalized amplitude treated as silence for audio metrics")
+    evidence.add_argument("--stereo-balance-delta", type=float,
+                          help="maximum signed left/right energy-balance change")
+    evidence.add_argument("--cue-onset-delta-ms", type=float,
+                          help="maximum audible cue onset shift in milliseconds")
+    evidence.add_argument("--silent-frame-ratio-increase", type=float,
+                          help="maximum increase in all-channel silent-frame ratio")
+    evidence.add_argument("--internal-silence-increase-ms", type=float,
+                          help="maximum increase in the longest internal dropout")
+    evidence.add_argument("--clipped-sample-ratio-increase", type=float,
+                          help="maximum increase in exact full-scale PCM samples")
+    evidence.add_argument("--loop-seam-delta-increase", type=float,
+                          help="maximum increase in normalized end-to-start discontinuity")
     evidence.add_argument("--fail-on-difference", action="store_true",
                           help="exit nonzero when a meaningful difference is found")
     evidence.add_argument("--json", action="store_true",
@@ -1083,7 +1164,10 @@ def parser() -> argparse.ArgumentParser:
     fuzz.add_argument("--seed", type=int, default=1)
     fuzz.add_argument("--cases", type=int, default=8)
     fuzz.add_argument("--frames", type=int, default=600)
-    fuzz.add_argument("--neutral-boot-frames", type=int, default=60)
+    fuzz.add_argument(
+        "--neutral-boot-frames", type=int,
+        help="neutral frames before fuzz input; defaults to play.ready_frames",
+    )
     fuzz.add_argument("--maximum-actions", type=int, default=64)
     fuzz.add_argument("--generate-only", action="store_true",
                       help="emit plans without executing a ROM")

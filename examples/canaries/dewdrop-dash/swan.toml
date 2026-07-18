@@ -1,8 +1,8 @@
 schema_version = 1
 
 [sdk]
-version = "0.3.1"
-revision = "sha256:92c2f3b0823465c0d0b0d4e094ef3b2c89fcbf2e984a364cb1021e95e6043874"
+version = "0.4.0"
+revision = "sha256:1161301102ae6326a768ba6b536d58d307240d66a857e65f23989b523c7c6814"
 
 [game]
 id = "dewdrop-dash"

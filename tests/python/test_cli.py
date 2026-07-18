@@ -43,7 +43,9 @@ class CliTests(unittest.TestCase):
             "schema/author-audio.schema.json",
             "schema/author-operation-report.schema.json",
             "schema/author-handoff.schema.json",
-            "CHANGELOG.md", "docs/release-notes-0.3.1.md",
+            "CHANGELOG.md", "docs/input-gestures.md",
+            "docs/release-notes-0.3.1.md",
+            "docs/release-notes-0.4.0.md",
             "docs/supply-chain.md", "toolchain.lock",
         ):
             self.assertTrue((root / relative).is_file(), relative)
