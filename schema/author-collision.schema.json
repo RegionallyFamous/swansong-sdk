@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-collision.schema.json",
+  "title": "SwanSong collision region and path authoring document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "width", "height", "regions", "paths"],
+  "properties": {
+    "schema": {"const": "swansong-author-collision-v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "width": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "height": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "regions": {
+      "type": "array", "maxItems": 4096,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "closed", "points"],
+        "allOf": [
+          {
+            "if": {"properties": {"closed": {"const": true}}, "required": ["closed"]},
+            "then": {"properties": {"points": {"minItems": 3}}}
+          }
+        ],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "kind": {"enum": ["solid", "hazard", "trigger", "one-way"]},
+          "closed": {"type": "boolean"},
+          "points": {"type": "array", "minItems": 2, "maxItems": 256, "items": {"$ref": "#/$defs/point"}}
+        }
+      }
+    },
+    "paths": {
+      "type": "array", "maxItems": 1024,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "loop", "points"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"}, "loop": {"type": "boolean"},
+          "points": {
+            "type": "array", "minItems": 1, "maxItems": 4096,
+            "items": {"$ref": "#/$defs/pathPoint"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "point": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y"],
+      "properties": {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}}
+    },
+    "pathPoint": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y", "waitFrames"],
+      "properties": {
+        "x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0},
+        "waitFrames": {"type": "integer", "minimum": 0, "maximum": 65535}
+      }
+    }
+  }
+}

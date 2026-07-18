@@ -26,6 +26,14 @@ class CliTests(unittest.TestCase):
             "schema/minimize-report.schema.json",
             "schema/replay-checkpoints.schema.json",
             "schema/replay-report.schema.json",
+            "schema/author-tilemap.schema.json",
+            "schema/author-sprites.schema.json",
+            "schema/author-palette.schema.json",
+            "schema/author-collision.schema.json",
+            "schema/author-scene-flow.schema.json",
+            "schema/author-audio.schema.json",
+            "schema/author-operation-report.schema.json",
+            "schema/author-handoff.schema.json",
         ):
             self.assertTrue((root / relative).is_file(), relative)
 

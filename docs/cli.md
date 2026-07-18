@@ -107,6 +107,36 @@ frames, normalizes controls, compresses unchanged inputs, preserves a neutral
 fresh boot, and writes `swan-song-frame-input-plan-v1`. JSON output uses
 `swansong-scenario-record-report-v1`.
 
+## swan author
+
+Usage: swan author create KIND ID [--project PATH] [--output DOCUMENT] [--json]
+
+Usage: swan author validate DOCUMENT [--project PATH] [--json]
+
+Usage: swan author report DOCUMENT [--project PATH] [--output REPORT] [--json]
+
+Usage: swan author export DOCUMENT --output SOURCE [--project PATH] [--json]
+
+Provides the headless contracts behind Studio's tilemap/layer, sprite
+animation/hitbox, palette/mono, collision/path, scene-flow, and audio
+pattern/instrument editors. Kinds are `tilemap`, `sprites`, `palette`,
+`collision`, `scene-flow`, and `audio`. Create defaults to
+`authoring/ID.KIND.json`.
+
+All paths are resolved against the project containing `swan.toml` and must
+remain within it through symlinks. Every write exclusively creates a new file;
+existing documents, sources, reports, and exports are never overwritten. The
+formats contain identifiers and data only—no command or script field is
+accepted, and Author never launches another tool.
+
+Audio exports directly to the existing SDK music TOML format. Palette exports
+a deterministic PNG swatch. The other four kinds export a hash-bound
+`swansong-author-handoff-v1` document that states the existing Wonderful asset
+lane or portable-model integration point. They do not introduce a competing
+compiler. Reports use `swansong-author-operation-report-v1`, always set
+`gameplayEvidence` false, and never claim a visual or audio preview is ROM
+evidence. See [Visual authoring contracts](visual-authoring.md).
+
 ## swan minimize
 
 Usage: swan minimize --project PATH --plan PLAN --predicate PREDICATE --output PLAN [--json]

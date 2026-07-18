@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-tilemap.schema.json",
+  "title": "SwanSong tilemap authoring document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "tileSize", "width", "height", "tilesetSource", "layers"],
+  "properties": {
+    "schema": {"const": "swansong-author-tilemap-v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "tileSize": {"const": 8},
+    "width": {"type": "integer", "minimum": 1, "maximum": 256},
+    "height": {"type": "integer", "minimum": 1, "maximum": 256},
+    "tilesetSource": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.[Pp][Nn][Gg]$"},
+    "layers": {
+      "type": "array", "minItems": 1, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "visible", "scrollX", "scrollY", "cells"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "visible": {"type": "boolean"},
+          "scrollX": {"type": "integer", "minimum": -32768, "maximum": 32767},
+          "scrollY": {"type": "integer", "minimum": -32768, "maximum": 32767},
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["x", "y", "tile", "palette", "flipX", "flipY"],
+              "properties": {
+                "x": {"type": "integer", "minimum": 0},
+                "y": {"type": "integer", "minimum": 0},
+                "tile": {"type": "integer", "minimum": 0, "maximum": 1023},
+                "palette": {"type": "integer", "minimum": 0, "maximum": 15},
+                "flipX": {"type": "boolean"},
+                "flipY": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+}

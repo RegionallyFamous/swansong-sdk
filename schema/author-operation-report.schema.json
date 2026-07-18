@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-operation-report.schema.json",
+  "title": "SwanSong authoring operation report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "ok", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-author-operation-report-v1"},
+    "ok": {"type": "boolean"},
+    "operation": {"enum": ["create", "validate", "report", "export", null]},
+    "project": {"type": "string"},
+    "kind": {"enum": ["tilemap", "sprites", "palette", "collision", "scene-flow", "audio"]},
+    "document": {"type": "string"},
+    "documentSchema": {"type": "string"},
+    "documentSHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metrics": {"type": "object"},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "output": {"type": ["string", "null"]},
+    "export": {"type": ["object", "null"]},
+    "gameplayEvidence": {"const": false},
+    "notice": {"type": "string"},
+    "error": {"type": "object"}
+  }
+}

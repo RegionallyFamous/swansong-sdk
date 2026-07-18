@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-handoff.schema.json",
+  "title": "SwanSong explicit authoring handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "sourceSchema", "sourceSHA256", "gameplayEvidence", "integration", "document"],
+  "properties": {
+    "schema": {"const": "swansong-author-handoff-v1"},
+    "kind": {"enum": ["tilemap", "sprites", "collision", "scene-flow"]},
+    "sourceSchema": {"type": "string"},
+    "sourceSHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gameplayEvidence": {"const": false},
+    "integration": {"type": "object"},
+    "document": {"type": "object"}
+  }
+}

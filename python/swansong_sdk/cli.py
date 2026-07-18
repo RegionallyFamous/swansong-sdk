@@ -12,6 +12,11 @@ import subprocess
 import sys
 import tempfile
 
+from .authoring import (
+    KINDS as AUTHORING_KINDS, REPORT_SCHEMA as AUTHORING_REPORT_SCHEMA,
+    AuthoringError, default_document, export_document, operation_report,
+    validate_document,
+)
 from .generator import GenerationError, asset_report, generate, validate_budgets
 from .evidence import EvidenceError, EvidenceThresholds, diff_evidence
 from .fuzzing import FuzzError, generate_fuzz_plan
@@ -337,6 +342,126 @@ def command_scenario_record(args: argparse.Namespace) -> None:
     else:
         print(f"Recorded {len(report['plan']['events'])} input transitions")
         print(f"Plan: {destination}")
+
+
+def _project_owned_path(manifest, value: str, *, label: str) -> Path:
+    raw = Path(value)
+    candidate = raw if raw.is_absolute() else manifest.root / raw
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(manifest.root.resolve())
+    except ValueError as exc:
+        raise AuthoringError(f"{label} must remain inside the project root") from exc
+    if resolved == manifest.root.resolve():
+        raise AuthoringError(f"{label} must name a file inside the project root")
+    return resolved
+
+
+def _write_new_file(path: Path, payload: bytes, *, label: str) -> None:
+    if path.exists():
+        raise AuthoringError(f"refusing to overwrite existing {label}: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as destination:
+            destination.write(payload)
+    except FileExistsError as exc:
+        raise AuthoringError(f"refusing to overwrite existing {label}: {path}") from exc
+
+
+def _load_author_document(manifest, argument: str) -> tuple[Path, dict[str, object]]:
+    path = _project_owned_path(manifest, argument, label="authoring document")
+    return path, validate_document(_read_json_object(path, "authoring document"))
+
+
+def _print_author_report(report: dict[str, object]) -> None:
+    print(
+        f"Author {str(report['operation']).upper()}: {report['kind']} "
+        f"({len(report['findings'])} finding(s))"
+    )
+    print(f"Document: {report['document']}")
+    if report["output"]:
+        print(f"Output: {report['output']}")
+    print("Authoring output is not gameplay evidence.")
+
+
+def command_author_create(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    document = default_document(args.kind, args.id)
+    destination = _project_owned_path(
+        manifest,
+        args.output or f"authoring/{args.id}.{args.kind}.json",
+        label="authoring document output",
+    )
+    if destination.suffix.lower() != ".json":
+        raise AuthoringError("authoring document output must use a .json suffix")
+    _write_new_file(
+        destination, canonical_json(document).encode("utf-8"),
+        label="authoring document",
+    )
+    report = operation_report(
+        "create", document, project=manifest.id, document_path=destination,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_validate(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    report = operation_report(
+        "validate", document, project=manifest.id, document_path=path,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_report(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    report = operation_report(
+        "report", document, project=manifest.id, document_path=path,
+    )
+    if args.output:
+        destination = _project_owned_path(
+            manifest, args.output, label="author report output",
+        )
+        if destination.suffix.lower() != ".json":
+            raise AuthoringError("author report output must use a .json suffix")
+        report["output"] = str(destination)
+        _write_new_file(
+            destination, canonical_json(report).encode("utf-8"),
+            label="author report",
+        )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
+
+
+def command_author_export(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    path, document = _load_author_document(manifest, args.document)
+    destination = _project_owned_path(
+        manifest, args.output, label="author export output",
+    )
+    payload, export = export_document(document)
+    if destination.suffix.lower() != export["requiredSuffix"]:
+        raise AuthoringError(
+            f"{document['schema']} export must use {export['requiredSuffix']}"
+        )
+    _write_new_file(destination, payload, label="author export")
+    report = operation_report(
+        "export", document, project=manifest.id, document_path=path,
+        output_path=destination, export=export,
+    )
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        _print_author_report(report)
 
 
 def _candidate_failure(rom: Path, plan: dict[str, object],
@@ -857,6 +982,42 @@ def parser() -> argparse.ArgumentParser:
                           help="emit swansong-scenario-record-report-v1 JSON")
     recorder.set_defaults(handler=command_scenario_record)
 
+    author = commands.add_parser(
+        "author", help="create, validate, report, and export visual authoring documents"
+    )
+    author_actions = author.add_subparsers(dest="author_operation", required=True)
+
+    author_create = author_actions.add_parser(
+        "create", help="create a new project-owned authoring document"
+    )
+    author_create.add_argument("kind", choices=AUTHORING_KINDS)
+    author_create.add_argument("id", help="lowercase kebab-case document id")
+    author_create.add_argument("--project", help="path to swan.toml")
+    author_create.add_argument("--output", help="project-relative .json destination")
+    author_create.add_argument("--json", action="store_true",
+                               help="emit swansong-author-operation-report-v1 JSON")
+    author_create.set_defaults(handler=command_author_create)
+
+    for operation, help_text, handler in (
+        ("validate", "validate one project-owned authoring document", command_author_validate),
+        ("report", "report deterministic authoring metrics and findings", command_author_report),
+        ("export", "export an SDK source or explicit handoff document", command_author_export),
+    ):
+        subcommand = author_actions.add_parser(operation, help=help_text)
+        subcommand.add_argument("document", help="project-owned authoring JSON document")
+        subcommand.add_argument("--project", help="path to swan.toml")
+        if operation in {"report", "export"}:
+            subcommand.add_argument(
+                "--output", required=operation == "export",
+                help=(
+                    "new project-owned export destination" if operation == "export"
+                    else "optional new project-owned .json report destination"
+                ),
+            )
+        subcommand.add_argument("--json", action="store_true",
+                                help="emit swansong-author-operation-report-v1 JSON")
+        subcommand.set_defaults(handler=handler)
+
     minimize = commands.add_parser(
         "minimize", help="delta-reduce a failing exact-frame plan through SwanSong"
     )
@@ -974,6 +1135,7 @@ def parser() -> argparse.ArgumentParser:
 _STRUCTURED_ERROR_SCHEMAS = {
     "doctor": "swansong-doctor-report-v1",
     "scenario-record": "swansong-scenario-record-report-v1",
+    "author": AUTHORING_REPORT_SCHEMA,
     "minimize": "swansong-minimize-report-v1",
     "replay": "swansong-replay-report-v1",
     "evidence-diff": "swansong-evidence-diff-v1",
@@ -1029,7 +1191,13 @@ def _emit_structured_error(args: argparse.Namespace, exc: Exception) -> bool:
         "ok": False,
         "error": {"code": "command-failed", "message": str(exc)},
     }
-    if args.command == "fuzz":
+    if args.command == "author":
+        payload.update(
+            operation=getattr(args, "author_operation", None),
+            gameplayEvidence=False,
+            notice="Authoring documents, previews, and exports are not gameplay evidence.",
+        )
+    elif args.command == "fuzz":
         payload.update(verdict="fail", findings=[{
             "severity": "error", "code": "command-failed", "message": str(exc),
         }], cases=[])
@@ -1045,7 +1213,7 @@ def main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv)
         status = args.handler(args)
         return status if isinstance(status, int) else 0
-    except (CommandError, EvidenceError, FuzzError, GenerationError,
+    except (AuthoringError, CommandError, EvidenceError, FuzzError, GenerationError,
             LaboratoryError, LayoutError, ManifestError, OptimizationError,
             MinimizeError, OperationsError, OSError, PlanError, PNGError,
             ProfileError, ReplayError, ScaffoldError, ScenarioError,

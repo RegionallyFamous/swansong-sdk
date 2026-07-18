@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/author-sprites.schema.json",
+  "title": "SwanSong sprite animation authoring document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "source", "frames", "animations", "hitboxes"],
+  "properties": {
+    "schema": {"const": "swansong-author-sprites-v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "source": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.[Pp][Nn][Gg]$"},
+    "frames": {
+      "type": "array", "minItems": 1, "maxItems": 1024,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "x", "y", "width", "height", "originX", "originY"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "x": {"type": "integer", "minimum": 0, "maximum": 65535},
+          "y": {"type": "integer", "minimum": 0, "maximum": 65535},
+          "width": {"type": "integer", "minimum": 1, "maximum": 224},
+          "height": {"type": "integer", "minimum": 1, "maximum": 144},
+          "originX": {"type": "integer"},
+          "originY": {"type": "integer"}
+        }
+      }
+    },
+    "animations": {
+      "type": "array", "minItems": 1, "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "loop", "steps"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"}, "loop": {"type": "boolean"},
+          "steps": {
+            "type": "array", "minItems": 1, "maxItems": 4096,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["frame", "durationFrames", "flipX", "flipY"],
+              "properties": {
+                "frame": {"$ref": "#/$defs/id"},
+                "durationFrames": {"type": "integer", "minimum": 1, "maximum": 65535},
+                "flipX": {"type": "boolean"}, "flipY": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "hitboxes": {
+      "type": "array", "maxItems": 4096,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "frame", "kind", "x", "y", "width", "height"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"}, "frame": {"$ref": "#/$defs/id"},
+          "kind": {"enum": ["solid", "hurt", "attack", "trigger"]},
+          "x": {"type": "integer", "minimum": -32768, "maximum": 32767},
+          "y": {"type": "integer", "minimum": -32768, "maximum": 32767},
+          "width": {"type": "integer", "minimum": 1, "maximum": 65535},
+          "height": {"type": "integer", "minimum": 1, "maximum": 65535}
+        }
+      }
+    }
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+}

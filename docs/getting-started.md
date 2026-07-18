@@ -156,7 +156,8 @@ bounded build/play check.
 
 SwanSong Studio calls the same CLI contracts for the rest of the loop:
 `swan scenario-record` turns an exported input log into a checked-in frame
-plan; `swan minimize` reduces a declared failure within a bounded SwanSong
+plan; `swan author` owns the safe, versioned source documents behind visual
+editors; `swan minimize` reduces a declared failure within a bounded SwanSong
 evaluation budget; `swan replay` combines a plan with checkpoints, evidence,
 and trace summaries for a frame timeline; `swan optimize` previews source-art
 savings; `swan profile` combines declared budgets with an optional trace; `swan evidence-diff` compares decoded

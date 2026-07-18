@@ -25,6 +25,7 @@ swan test
 swan build
 swan play neutral
 swan doctor
+swan author create palette launch-palette
 swan profile --json
 swan optimize --json
 swan lab --json
@@ -39,7 +40,7 @@ resource budgets, and fresh-boot SwanSong contracts.
 and SwanSong interface. `swan dev` watches project inputs and reruns a declared
 SwanSong contract. Scenario Recorder, deterministic failure-plan Minimizer,
 Replay Inspector, Evidence Diff, deterministic Fuzz, Profiler, Asset Optimizer,
-and Save/RTC Lab share stable versioned JSON
+project-owned visual Authoring, and Save/RTC Lab share stable versioned JSON
 contracts with SwanSong Studio and CI. `swan release` fails closed across
 build, test, budgets, pinned toolchain provenance, and every declared SwanSong
 play gate. It requires hash-bound PNG/WAV inspection notes for every required
