@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .identity import sdk_identity
 from .layout import LayoutError, sdk_root
 from .manifest import PROJECT_ID
 
@@ -35,11 +36,14 @@ def create_project(project_id: str, recipe: str, destination: str | Path | None 
     if target.exists() and any(target.iterdir() if target.is_dir() else [target]):
         raise ScaffoldError(f"destination is not empty: {target}")
     source_roots = [_templates_root() / "common", _templates_root() / recipe]
+    identity = sdk_identity()
     replacements = {
         "@@PROJECT_ID@@": project_id,
         "@@PROJECT_C_ID@@": project_id.replace("-", "_"),
         "@@PROJECT_TITLE@@": _title(project_id),
         "@@RECIPE@@": recipe,
+        "@@SDK_VERSION@@": identity["version"],
+        "@@SDK_REVISION@@": identity["revision"],
     }
     target.mkdir(parents=True, exist_ok=True)
     for source_root in source_roots:

@@ -4,6 +4,12 @@ The checked-in manifest is the project source of truth. Unknown top-level data
 is reserved for forward-compatible tools; all documented values are validated.
 See `schema/swan.schema.json` for editor integration.
 
+`[sdk]` records the semantic SDK version and a content-addressed `sha256:`
+revision. `swan new` writes both from the resolved payload. `swan doctor`
+reports a mismatch, and `swan release` refuses an absent or mismatched pin.
+This distinguishes source checkouts, submodules, and installed wheels that
+claim the same package version but contain different code or templates.
+
 ## Game and cartridge
 
 `schema_version` is currently `1`. `[game]` requires a lowercase kebab-case

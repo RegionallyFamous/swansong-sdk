@@ -22,7 +22,7 @@ class PlanTests(unittest.TestCase):
         }
         self.assertIs(validate_plan(plan, Path("valid.json")), plan)
 
-    def test_rejects_input_before_two_neutral_frames(self) -> None:
+    def test_accepts_recorded_rapid_press_after_one_neutral_frame(self) -> None:
         plan = {
             "schema": "swan-song-frame-input-plan-v1",
             "totalFrames": 20,
@@ -33,8 +33,7 @@ class PlanTests(unittest.TestCase):
                 {"frameIndex": 12, "inputs": ["x2"]},
             ],
         }
-        with self.assertRaisesRegex(PlanError, "needs two neutral frames"):
-            validate_plan(plan, Path("too-fast.json"))
+        self.assertIs(validate_plan(plan, Path("rapid.json")), plan)
 
     def test_rejects_unknown_inputs_and_non_neutral_boot(self) -> None:
         with self.assertRaisesRegex(PlanError, "neutral frame 0"):

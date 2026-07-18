@@ -87,8 +87,11 @@ def read_png(path: str | Path) -> Image:
     palette: list[tuple[int, int, int, int]] = []
     transparency = b""
     compressed = bytearray()
+    saw_iend = False
     while offset + 12 <= len(payload):
         length = struct.unpack(">I", payload[offset:offset + 4])[0]
+        if length > len(payload) - offset - 12:
+            raise PNGError("truncated PNG chunk")
         kind = payload[offset + 4:offset + 8]
         body = payload[offset + 8:offset + 8 + length]
         expected_crc = struct.unpack(">I", payload[offset + 8 + length:offset + 12 + length])[0]
@@ -108,9 +111,14 @@ def read_png(path: str | Path) -> Image:
         elif kind == b"IDAT":
             compressed.extend(body)
         elif kind == b"IEND":
+            saw_iend = True
             break
+    if offset != len(payload):
+        raise PNGError("truncated PNG chunk")
     if header is None:
         raise PNGError("PNG has no IHDR")
+    if not saw_iend:
+        raise PNGError("PNG has no IEND")
     width, height, depth, color_type, compression, filter_method, interlace = header
     if width <= 0 or height <= 0:
         raise PNGError("PNG dimensions must be positive")
