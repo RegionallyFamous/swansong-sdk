@@ -189,6 +189,8 @@ def _call(process: subprocess.Popen[bytes], request_id: int, rom: Path,
                 "romPath": str(rom.resolve()),
                 "plan": plan,
                 "confirmShareCapture": True,
+                "captureSDKTrace": True,
+                "confirmShareSDKTrace": True,
             },
         },
     }, deadline, buffer)

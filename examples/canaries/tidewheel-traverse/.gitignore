@@ -1,0 +1,4 @@
+build/
+compile_commands.json
+tidewheel_traverse.wsc
+wfconfig.toml

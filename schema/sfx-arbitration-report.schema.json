@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/sfx-arbitration-report.schema.json",
+  "title": "SwanSong SFX arbitration report v1",
+  "type": "object",
+  "required": ["schema", "channels", "decisions", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-sfx-arbitration-report-v1"},
+    "channels": {"type": "integer", "minimum": 1, "maximum": 4},
+    "decisions": {"type": "array", "items": {"type": "object"}},
+    "gameplayEvidence": {"const": false},
+    "project": {"type": "string"},
+    "source": {"type": "string"}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "swan-scenario-outcome-contract-v1",
+  "final": {
+    "scene": 1,
+    "ending": 1,
+    "progress": 2,
+    "stateHash": 3956214009
+  },
+  "reset": {"expectation": "exactly-one"},
+  "audio": {"expectation": "audible", "markerMask": 1}
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/scenario-outcome-report.schema.json",
+  "title": "SwanSong structured scenario outcome report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "passed", "trace", "observed", "checks"],
+  "properties": {
+    "schema": {"const": "swan-scenario-outcome-report-v1"},
+    "passed": {"type": "boolean"},
+    "project": {"type": "string"},
+    "scenario": {"type": "string"},
+    "traceFile": {"type": "string"},
+    "wavFile": {"type": "string"},
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256", "frameCount", "totalFrameCount", "droppedFrameCount",
+        "streamHashFNV1a32", "complete"
+      ],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "frameCount": {"type": "integer", "minimum": 0},
+        "totalFrameCount": {"type": "integer", "minimum": 0},
+        "droppedFrameCount": {"type": "integer", "minimum": 0},
+        "streamHashFNV1a32": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "observed": {"type": "object"},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "passed", "expected", "observed", "message"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "passed": {"type": "boolean"},
+          "expected": {},
+          "observed": {},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

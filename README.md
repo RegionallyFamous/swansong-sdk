@@ -26,6 +26,7 @@ swan build
 swan play neutral
 swan doctor
 swan author create palette launch-palette
+swan audio preview --source assets/audio/theme.toml
 swan profile --json
 swan optimize --json
 swan lab --json
@@ -40,19 +41,30 @@ cartridge callbacks, resource budgets, and fresh-boot SwanSong contracts.
 
 `swan doctor` audits the complete SDK, toolchain, project, generated config,
 and SwanSong interface. `swan dev` watches project inputs and reruns a declared
-SwanSong contract. Scenario Recorder, deterministic failure-plan Minimizer,
+SwanSong contract against a diagnostic trace ROM. Scenario Recorder,
+deterministic failure-plan Minimizer,
 Replay Inspector, Evidence Diff, deterministic Fuzz, Profiler, Asset Optimizer,
 project-owned visual Authoring, and Save/RTC Lab share stable versioned JSON
 contracts with SwanSong Studio and CI. `swan release` fails closed across
 build, test, budgets, pinned toolchain provenance, and every declared SwanSong
-play gate. It requires hash-bound PNG/WAV inspection notes for every required
-check before producing a byte-deterministic release archive.
+play gate, then rebuilds a clean non-trace release ROM. It requires hash-bound
+PNG/WAV inspection notes for every required check and packages an explicit
+validation-ROM/release-ROM digest binding before producing a byte-deterministic
+release archive.
 
 Release archives also carry deterministic SPDX and CycloneDX software bills
-of materials plus an unsigned in-toto/SLSA provenance statement. The two
+of materials plus an unsigned in-toto/SLSA provenance statement. The four
 complete recipe canaries under `examples/canaries` prove that a clean installed
 SDK can create, asset-build, host-test, compile, and report a bounded native WSC
-ROM without project-specific framework changes.
+ROM without project-specific framework changes. Together they cover hardware
+sprites, save/RTC boot behavior, and mono-compatible dual-layer scrolling.
+
+Version 0.5 also adds fixed-capacity animation, camera, collision, dirty-grid,
+selection, pool, and pathfinding primitives; compiled visual authoring data;
+content-addressed graphic rebuilds; an audio authoring workbench; safe shared
+asset import; reversible optimizer and SDK migrations; historical budget
+gates; and opt-in semantic runtime traces. See [gameplay primitives](docs/gameplay-primitives.md)
+and [trace/outcome contracts](docs/trace-and-outcomes.md).
 
 ## Design constraints
 
@@ -75,7 +87,7 @@ See [Getting started](docs/getting-started.md), the
 [SwanSong Desktop integration contract](docs/swansong-desktop-integration.md).
 Framework contributors should also follow the [feedback loop](docs/framework-feedback-loop.md)
 and [contribution guide](AGENTS.md). Release engineers should read the
-[supply-chain contract](docs/supply-chain.md) and [0.4.0 release notes](docs/release-notes-0.4.0.md).
+[supply-chain contract](docs/supply-chain.md) and [0.5.0 release notes](docs/release-notes-0.5.0.md).
 
 ## Status
 

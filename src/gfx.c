@@ -38,6 +38,9 @@ typedef struct {
 
 static swan_gfx_state_t gfx;
 static uint16_t hardware_tile_capacity = SWAN_GFX_TILE_CAPACITY;
+static swan_gfx_frame_usage_t frame_usage_cache;
+static uint16_t frame_usage_generation;
+static bool frame_usage_valid;
 
 uint16_t swan_gfx_tile_index(swan_tile_attr_t attr) {
     return (uint16_t)((attr & SWAN_TILE_INDEX_MASK) |
@@ -59,6 +62,9 @@ static bool valid_clip(const swan_gfx_clip_t *clip) {
 
 void swan_gfx_init(const swan_gfx_config_t *config) {
     memset(&gfx, 0, sizeof(gfx));
+    memset(&frame_usage_cache, 0, sizeof(frame_usage_cache));
+    frame_usage_generation = 0;
+    frame_usage_valid = false;
     gfx.limits.tile_capacity = hardware_tile_capacity;
     gfx.limits.palette_capacity = SWAN_GFX_PALETTE_CAPACITY;
     gfx.limits.sprite_capacity = SWAN_GFX_SPRITE_CAPACITY;
@@ -296,6 +302,7 @@ bool swan_gfx_set_sprite(uint8_t sprite, const swan_sprite_t *value) {
     gfx.sprites[sprite] = *value;
 #endif
     ++gfx.sprite_generation;
+    frame_usage_valid = false;
     gfx.dirty = true;
     return true;
 }
@@ -311,10 +318,15 @@ void swan_gfx_hide_sprites(void) {
     }
 #endif
     ++gfx.sprite_generation;
+    frame_usage_valid = false;
     gfx.dirty = true;
 }
 
 void swan_gfx_set_sprites_enabled(bool enabled) {
+    if (gfx.sprites_enabled != enabled) {
+        ++gfx.sprite_generation;
+        frame_usage_valid = false;
+    }
     gfx.sprites_enabled = enabled;
     gfx.dirty = true;
 }
@@ -326,11 +338,9 @@ static void measure_usage(void) {
     uint8_t y;
     uint8_t x;
     uint8_t sprite;
-    uint8_t scanline;
     uint16_t highest = 0;
     uint8_t palettes = 0;
-    uint8_t visible = 0;
-    uint8_t maximum = 0;
+    const swan_gfx_frame_usage_t *frame_usage;
 
     for (layer = 0; layer < SWAN_GFX_LAYER_COUNT; ++layer) {
         for (y = 0; y < SWAN_GFX_MAP_HEIGHT; ++y) {
@@ -343,42 +353,28 @@ static void measure_usage(void) {
     for (sprite = 0; sprite < gfx.limits.sprite_capacity; ++sprite) {
         swan_sprite_t value;
 #if SWAN_GFX_DIRECT_HARDWARE
+        if ((gfx.sprite_visible[sprite >> 3] &
+                (uint8_t)(1u << (sprite & 7u))) == 0) continue;
         swan_platform_gfx_get_sprite(sprite, &value);
-        value.visible = (gfx.sprite_visible[sprite >> 3] &
-            (uint8_t)(1u << (sprite & 7u))) != 0;
+        value.visible = true;
 #else
         value = gfx.sprites[sprite];
 #endif
         if (value.visible) {
             uint16_t tile = value.tile;
-            ++visible;
             if (tile > highest) highest = tile;
         }
     }
     for (x = 0; x < gfx.limits.palette_capacity; ++x) {
         if ((gfx.palette_set & (uint16_t)(1u << x)) != 0) palettes = (uint8_t)(x + 1u);
     }
-    for (scanline = 0; scanline < 144u; ++scanline) {
-        uint8_t count = 0;
-        for (sprite = 0; sprite < gfx.limits.sprite_capacity; ++sprite) {
-            swan_sprite_t value;
-#if SWAN_GFX_DIRECT_HARDWARE
-            swan_platform_gfx_get_sprite(sprite, &value);
-            value.visible = (gfx.sprite_visible[sprite >> 3] &
-                (uint8_t)(1u << (sprite & 7u))) != 0;
-#else
-            value = gfx.sprites[sprite];
-#endif
-            if (value.visible && scanline >= value.y && scanline < value.y + 8)
-                ++count;
-        }
-        if (count > maximum) maximum = count;
-    }
+    frame_usage = swan_gfx_internal_frame_usage();
     gfx.usage.highest_tile = highest;
     gfx.usage.palettes_used = palettes;
-    gfx.usage.sprites_visible = visible;
-    gfx.usage.maximum_sprites_on_scanline = maximum;
-    gfx.usage.scanline_overflow = maximum > SWAN_GFX_SPRITES_PER_SCANLINE;
+    gfx.usage.sprites_visible = frame_usage->sprites_visible;
+    gfx.usage.maximum_sprites_on_scanline =
+        frame_usage->maximum_sprites_on_scanline;
+    gfx.usage.scanline_overflow = frame_usage->scanline_overflow;
 }
 
 void swan_gfx_present(void) {
@@ -392,6 +388,48 @@ bool swan_gfx_dirty(void) {
 const swan_gfx_usage_t *swan_gfx_usage(void) {
     measure_usage();
     return &gfx.usage;
+}
+
+const swan_gfx_frame_usage_t *swan_gfx_internal_frame_usage(void) {
+    static uint8_t scanline_counts[SWAN_GFX_DISPLAY_HEIGHT];
+    uint8_t sprite;
+    if (frame_usage_valid && frame_usage_generation == gfx.sprite_generation)
+        return &frame_usage_cache;
+    memset(&frame_usage_cache, 0, sizeof(frame_usage_cache));
+    memset(scanline_counts, 0, sizeof(scanline_counts));
+    if (!gfx.sprites_enabled) {
+        frame_usage_generation = gfx.sprite_generation;
+        frame_usage_valid = true;
+        return &frame_usage_cache;
+    }
+    for (sprite = 0; sprite < gfx.limits.sprite_capacity; ++sprite) {
+        swan_sprite_t value;
+        uint8_t sprite_line;
+#if SWAN_GFX_DIRECT_HARDWARE
+        if ((gfx.sprite_visible[sprite >> 3] &
+                (uint8_t)(1u << (sprite & 7u))) == 0) continue;
+        swan_platform_gfx_get_sprite(sprite, &value);
+        value.visible = true;
+#else
+        value = gfx.sprites[sprite];
+#endif
+        if (!value.visible) continue;
+        ++frame_usage_cache.sprites_visible;
+        for (sprite_line = 0; sprite_line < 8u; ++sprite_line) {
+            uint8_t scanline = (uint8_t)((uint8_t)value.y + sprite_line);
+            uint8_t count;
+            if (scanline >= SWAN_GFX_DISPLAY_HEIGHT) continue;
+            count = ++scanline_counts[scanline];
+            if (count > frame_usage_cache.maximum_sprites_on_scanline)
+                frame_usage_cache.maximum_sprites_on_scanline = count;
+        }
+    }
+    frame_usage_cache.scanline_overflow =
+        frame_usage_cache.maximum_sprites_on_scanline >
+        SWAN_GFX_SPRITES_PER_SCANLINE;
+    frame_usage_generation = gfx.sprite_generation;
+    frame_usage_valid = true;
+    return &frame_usage_cache;
 }
 
 const swan_tile_attr_t *swan_gfx_internal_map(uint8_t layer) {

@@ -14,8 +14,10 @@ from swansong_sdk.png2bpp import read_png
 
 ROOT = Path(__file__).parents[2]
 CANARIES = {
+    "daybreak-ledger": "utility-app",
     "dewdrop-dash": "arcade-action",
     "signal-orchard": "grid-tactics",
+    "tidewheel-traverse": "arcade-action",
 }
 
 
@@ -47,19 +49,31 @@ class CanaryTests(unittest.TestCase):
                     )
                 art_assets = [item for item in manifest.assets
                               if item.type in {"fullscreen", "spritesheet"}]
-                self.assertEqual(len(art_assets), 2)
-                for asset in art_assets:
-                    image = read_png(root / asset.source)
-                    self.assertLessEqual(len(set(image.pixels)), 4)
-                    self.assertEqual(image.width % 8, 0)
-                    self.assertEqual(image.height % 8, 0)
-                self.assertTrue((root / "ART_PROVENANCE.md").is_file())
-                self.assertFalse((root / "src/diagnostic_art.h").exists())
+                if recipe == "utility-app":
+                    self.assertEqual(art_assets, [])
+                    self.assertTrue(manifest.rtc)
+                    self.assertEqual(manifest.save_type, "eeprom-128b")
+                    self.assertEqual(manifest.hardware, "mono-compatible")
+                else:
+                    self.assertEqual(len(art_assets), 2)
+                    for asset in art_assets:
+                        image = read_png(root / asset.source)
+                        self.assertLessEqual(len(set(image.pixels)), 4)
+                        self.assertEqual(image.width % 8, 0)
+                        self.assertEqual(image.height % 8, 0)
+                    self.assertTrue((root / "ART_PROVENANCE.md").is_file())
+                    self.assertFalse((root / "src/diagnostic_art.h").exists())
                 game_source = (root / "src/game.c").read_text()
                 self.assertGreaterEqual(
                     game_source.count("swan_core_reset_session();"), 2,
                     "scene entry and in-game reset must both reset SDK session state",
                 )
+                if project_id == "daybreak-ledger":
+                    self.assertEqual(game_source.count("swan_rtc_capture("), 1)
+                    self.assertLess(
+                        game_source.index("swan_rtc_capture("),
+                        game_source.index("void swan_scene_update("),
+                    )
 
     def test_portable_canary_models_compile_and_pass_without_sdk_linkage(self) -> None:
         compiler = os.environ.get("CC", "cc")

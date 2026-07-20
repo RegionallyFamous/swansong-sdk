@@ -1,0 +1,36 @@
+# Daybreak Ledger
+
+This utility canary exercises a mono-compatible cartridge, transactional
+EEPROM records, and a boot-only RTC capture in the same production ROM. The
+title shows an explicit RTC status marker and a bounded day-of-month indicator;
+game updates never consult live time.
+
+This WonderSwan utility was created from SwanSong SDK's `utility-app` recipe.
+It is a fixed-capacity, cartridge-safe text-grid starter rather than a game
+loop: the primary directional cluster wraps around the symbol grid, and the
+secondary cluster wraps among eight text slots. These clusters automatically
+swap when `orientation` changes in `swan.toml`.
+
+- Tap A to place the normal symbol; hold A for 30 frames to place its alternate.
+- Tap B to clear the selected text slot.
+- Press START to journal a nonempty record to cartridge EEPROM.
+- Press B + START together to clear and persist the blank record.
+
+The portable model owns entry, wrap, dirty, outcome, record-validation, and
+reset rules. `game.c` alone binds that model to WonderSwan storage, the typed
+commit SFX, graphics, and immutable frame input. Replace the neutral diagnostic
+tiles with project art without moving rules into the renderer.
+
+```sh
+python3 -m pip install -e "$SWANSONG_SDK_DIR"
+swan assets
+swan test
+swan build
+swan play interaction
+swan play success
+swan play failure
+swan play reset
+```
+
+Set `SWANSONG_SDK_DIR` when the SDK is not checked out beside this project.
+SwanSong is the only ROM execution and acceptance backend.

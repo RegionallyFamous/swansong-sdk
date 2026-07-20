@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/migration-report.schema.json",
+  "title": "SwanSong migration report v1",
+  "type": "object",
+  "required": ["schema", "manifest", "changed", "changes", "applied"],
+  "properties": {
+    "schema": {"const": "swansong-migration-report-v1"},
+    "manifest": {"type": "string"},
+    "changed": {"type": "boolean"},
+    "changes": {"type": "array", "items": {"type": "object"}},
+    "applied": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

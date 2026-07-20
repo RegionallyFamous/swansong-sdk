@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.dev/swansong/schema/deterministic-trace.schema.json",
+  "title": "SwanSong bounded deterministic runtime trace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "binaryVersion", "recordSize", "droppedFrameCount", "resetCount",
+    "totalFrameCount", "streamHashFNV1a32", "audioMarkerUnion",
+    "transitionCount", "frames"
+  ],
+  "properties": {
+    "schema": {"const": "swan-deterministic-trace-v1"},
+    "binaryVersion": {"const": 1},
+    "recordSize": {"const": 42},
+    "droppedFrameCount": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+    "resetCount": {"type": "integer", "minimum": 0, "maximum": 65535},
+    "totalFrameCount": {"$ref": "#/$defs/u32"},
+    "streamHashFNV1a32": {"$ref": "#/$defs/u32"},
+    "audioMarkerUnion": {"$ref": "#/$defs/u16"},
+    "transitionCount": {"$ref": "#/$defs/u16"},
+    "frames": {
+      "type": "array",
+      "maxItems": 255,
+      "items": {"$ref": "#/$defs/frame"}
+    }
+  },
+  "$defs": {
+    "u8": {"type": "integer", "minimum": 0, "maximum": 255},
+    "u16": {"type": "integer", "minimum": 0, "maximum": 65535},
+    "u32": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bootTick", "sessionTick", "stateHash", "inputHeld", "inputPressed",
+        "inputReleased", "actionsHeld", "actionsPressed", "actionsReleased",
+        "progress", "audioMarker", "transitionArgument", "resetCount", "scene",
+        "transitionFrom", "transitionTo", "ending", "flags", "spritesVisible",
+        "audioVoiceMask", "audioSfxMask", "maximumSpritesOnScanline", "panicCode"
+      ],
+      "properties": {
+        "bootTick": {"$ref": "#/$defs/u32"},
+        "sessionTick": {"$ref": "#/$defs/u32"},
+        "stateHash": {"$ref": "#/$defs/u32"},
+        "inputHeld": {"$ref": "#/$defs/u16"},
+        "inputPressed": {"$ref": "#/$defs/u16"},
+        "inputReleased": {"$ref": "#/$defs/u16"},
+        "actionsHeld": {"$ref": "#/$defs/u16"},
+        "actionsPressed": {"$ref": "#/$defs/u16"},
+        "actionsReleased": {"$ref": "#/$defs/u16"},
+        "progress": {"$ref": "#/$defs/u16"},
+        "audioMarker": {"$ref": "#/$defs/u16"},
+        "transitionArgument": {"$ref": "#/$defs/u16"},
+        "resetCount": {"$ref": "#/$defs/u16"},
+        "scene": {"$ref": "#/$defs/u8"},
+        "transitionFrom": {"$ref": "#/$defs/u8"},
+        "transitionTo": {"$ref": "#/$defs/u8"},
+        "ending": {"$ref": "#/$defs/u8"},
+        "flags": {"type": "integer", "minimum": 0, "maximum": 127},
+        "spritesVisible": {"$ref": "#/$defs/u8"},
+        "audioVoiceMask": {"type": "integer", "minimum": 0, "maximum": 15},
+        "audioSfxMask": {"type": "integer", "minimum": 0, "maximum": 15},
+        "maximumSpritesOnScanline": {"$ref": "#/$defs/u8"},
+        "panicCode": {"$ref": "#/$defs/u8"}
+      }
+    }
+  }
+}

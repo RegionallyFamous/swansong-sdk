@@ -20,7 +20,7 @@ class ManifestTests(unittest.TestCase):
                     manifest.play_ready_frames,
                     180 if recipe == "utility-app" else 120,
                 )
-                self.assertEqual(manifest.sdk_version, "0.4.0")
+                self.assertEqual(manifest.sdk_version, "0.5.0")
                 self.assertRegex(manifest.sdk_revision or "", r"^sha256:[0-9a-f]{64}$")
                 self.assertGreaterEqual(len(manifest.play_scenarios), 4)
                 self.assertTrue(all(

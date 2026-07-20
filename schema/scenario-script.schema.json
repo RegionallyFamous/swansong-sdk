@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/scenario-script.schema.json",
+  "title": "SwanSong deterministic scenario script",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "steps"],
+  "properties": {
+    "schema": {"const": "swansong-scenario-script-v1"},
+    "tailFrames": {"type": "integer", "minimum": 1, "maximum": 1000000},
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/step"}
+    }
+  },
+  "$defs": {
+    "gesture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputs"],
+      "properties": {
+        "inputs": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"enum": ["x1", "x2", "x3", "x4", "y1", "y2", "y3", "y4", "a", "b", "start"]}
+        },
+        "holdFrames": {"type": "integer", "minimum": 1},
+        "releaseFrames": {"type": "integer", "minimum": 1}
+      }
+    },
+    "step": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["waitFrames"], "properties": {"waitFrames": {"type": "integer", "minimum": 1}}},
+        {"type": "object", "additionalProperties": false, "required": ["tap"], "properties": {"tap": {"$ref": "#/$defs/gesture"}}},
+        {"type": "object", "additionalProperties": false, "required": ["hold"], "properties": {"hold": {"$ref": "#/$defs/gesture"}}},
+        {"type": "object", "additionalProperties": false, "required": ["chord"], "properties": {"chord": {"allOf": [{"$ref": "#/$defs/gesture"}, {"properties": {"inputs": {"minItems": 2}}}]}}},
+        {
+          "type": "object", "additionalProperties": false, "required": ["repeat"],
+          "properties": {"repeat": {
+            "type": "object", "additionalProperties": false, "required": ["count", "steps"],
+            "properties": {
+              "count": {"type": "integer", "minimum": 1},
+              "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}}
+            }
+          }}
+        }
+      ]
+    }
+  }
+}

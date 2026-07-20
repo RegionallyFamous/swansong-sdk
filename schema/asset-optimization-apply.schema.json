@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/asset-optimization-apply.schema.json",
+  "title": "SwanSong approved asset optimization apply v1",
+  "type": "object",
+  "required": ["schema", "asset", "approval", "operations", "source", "preview", "output", "revert", "reportPath", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-asset-optimization-apply-v1"},
+    "asset": {"type": "string"},
+    "approval": {"const": "artist-approved"},
+    "operations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["palette-reduction", "mono-conversion"]}},
+    "source": {"type": "object"},
+    "preview": {"type": "object"},
+    "output": {"type": "object"},
+    "revert": {"type": "object"},
+    "reportPath": {"type": "string"},
+    "reportSHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gameplayEvidence": {"const": false},
+    "project": {"type": "string"}
+  },
+  "additionalProperties": false
+}

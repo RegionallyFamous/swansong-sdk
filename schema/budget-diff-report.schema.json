@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/budget-diff-report.schema.json",
+  "title": "SwanSong budget diff report v1",
+  "type": "object",
+  "required": ["schema", "ok", "comparisons", "regressions"],
+  "properties": {
+    "schema": {"const": "swansong-budget-diff-report-v1"},
+    "ok": {"type": "boolean"},
+    "comparisons": {"type": "array", "items": {"type": "object"}},
+    "regressions": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

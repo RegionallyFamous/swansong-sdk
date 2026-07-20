@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/authoring-compilation-report.schema.json",
+  "title": "SwanSong authoring compilation report v1",
+  "type": "object",
+  "required": ["schema", "project", "documents", "generatedSources", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-authoring-compilation-report-v1"},
+    "project": {"type": "string"},
+    "documents": {"type": "array", "items": {"type": "object"}},
+    "generatedSources": {"type": "array", "items": {"type": "string"}},
+    "gameplayEvidence": {"const": false}
+  },
+  "additionalProperties": false
+}

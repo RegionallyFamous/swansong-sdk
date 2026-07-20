@@ -33,7 +33,11 @@ for line in sys.stdin:
         result = {"serverInfo": {"name": os.environ.get("TEST_SERVER_NAME", "swansong-playtester")}}
     else:
         arguments = request["params"]["arguments"]
-        if not arguments.get("confirmShareCapture"):
+        if not (
+            arguments.get("confirmShareCapture")
+            and arguments.get("captureSDKTrace")
+            and arguments.get("confirmShareSDKTrace")
+        ):
             result = {"isError": True, "content": [{"type": "text", "text": "confirmation required"}]}
         else:
             result = {

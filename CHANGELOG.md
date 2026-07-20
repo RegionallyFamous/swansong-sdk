@@ -1,5 +1,33 @@
 # SwanSong SDK changelog
 
+## 0.5.0 — 2026-07-20
+
+- Added fixed-capacity animation, camera, collision, tile-grid, cursor-grid,
+  pool, iterative pathfinding, and canonical state-hash primitives.
+- Added opt-in deterministic runtime traces and machine-checkable scenario
+  outcomes for state, progress, endings, resets, audio markers, and panics.
+- Added the guarded `SWMB` mailbox contract used by SwanSong to validate and
+  export canonical traces without exposing raw emulated memory.
+- Compiled visual authoring documents directly into typed C data and generated
+  a content-addressed project input graph plus incremental Wonderful art cache.
+- Added deterministic tap/hold/chord/repeat scenario scripts, a host audio
+  workbench, priority/SFX arbitration reports, and `swan play --all`.
+- Added hash-bound external asset import, explicit artist-approved and
+  reversible optimizer application, and source provenance reports.
+- Added previewable manifest migration, historical resource-budget gates, and
+  release packaging of budget comparisons.
+- Added Dewdrop Dash sprite coverage, the Daybreak Ledger save/RTC canary, and
+  the mono-compatible dual-layer Tidewheel Traverse scrolling canary.
+- Corrected 128-byte and 2-KiB cartridge EEPROM byte-address widths to match
+  Wonderful's storage contract, with focused backend tests.
+- Kept deterministic frame tracing at full gameplay speed by collecting its
+  sprite scanline summary without invoking the full on-demand VRAM profiler.
+- Added retained-ring integrity to the private SwanSong trace mailbox and made
+  wrapped sprite coordinates match WonderSwan scanline behavior.
+- Isolated normal and trace game objects, made Development trace-aware, and
+  made Release validate a trace ROM before rebuilding and binding the clean
+  cartridge. Installed-wheel CI now covers all four production canaries.
+
 ## 0.4.0 — 2026-07-18
 
 - Added deterministic semantic taps, double taps, holds, hold releases, and

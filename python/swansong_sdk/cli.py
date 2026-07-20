@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -13,18 +14,30 @@ import subprocess
 import sys
 import tempfile
 
+from . import __version__
 from .authoring import (
     KINDS as AUTHORING_KINDS, REPORT_SCHEMA as AUTHORING_REPORT_SCHEMA,
     AuthoringError, default_document, export_document, operation_report,
     validate_document,
 )
+from .audio_workbench import (
+    AudioWorkbenchError, render_music_preview, simulate_sfx_arbitration,
+)
+from .asset_import import AssetImportError, import_asset
+from .budget_history import BudgetHistoryError, compare_resource_reports
 from .generator import GenerationError, asset_report, generate, validate_budgets
-from .evidence import EvidenceError, EvidenceThresholds, diff_evidence
+from .evidence import EvidenceError, EvidenceThresholds, diff_evidence, validate_wav
 from .fuzzing import FuzzError, generate_fuzz_plan
 from .laboratory import LaboratoryError, LaboratoryReport, run_laboratory
 from .layout import LayoutError, sdk_root
+from .identity import sdk_identity
 from .manifest import ManifestError, find_manifest, load_manifest
-from .optimize import OptimizationError, preview_asset_optimization
+from .migration import MigrationError, apply_migration, plan_migration
+from .optimize import (
+    ARTIST_APPROVAL, OptimizationError,
+    apply_approved_asset_optimization, preview_asset_optimization,
+    revert_approved_asset_optimization,
+)
 from .operations import (
     RELEASE_SCHEMA, OperationsError, canonical_json, development_session, doctor_report,
     release_project,
@@ -41,7 +54,12 @@ from .profiler import ProfileError, profile_resources
 from .replay import ReplayError, build_replay_report, evidence_binding, validate_checkpoints
 from .scaffold import RECIPES, ScaffoldError, create_project
 from .scenario import ScenarioError, record_frame_log
+from .scenario_script import ScenarioScriptError, compile_scenario_script
 from .swansong import SwanSongError, play
+from .trace import (
+    TraceError, encode_trace, load_trace, outcome_report_bytes, trace_json_bytes,
+    validate_outcome_contract, validate_scenario_outcome,
+)
 
 
 class CommandError(RuntimeError):
@@ -141,7 +159,7 @@ def command_assets(args: argparse.Namespace) -> None:
     print(f"Generated {len(compiled)} assets in {manifest.root / 'build' / 'generated'}")
 
 
-def _run_make(manifest, targets: list[str]) -> None:
+def _run_make(manifest, targets: list[str], *, variables: list[str] | None = None) -> None:
     environment = os.environ.copy()
     environment.setdefault("SWANSONG_SDK_DIR", str(sdk_root()))
     environment.setdefault(
@@ -152,7 +170,10 @@ def _run_make(manifest, targets: list[str]) -> None:
         "512" if manifest.hardware == "mono-compatible" else "1024",
     )
     try:
-        subprocess.run(["make", *targets], cwd=manifest.root, env=environment, check=True)
+        subprocess.run(
+            ["make", *(variables or []), *targets],
+            cwd=manifest.root, env=environment, check=True,
+        )
     except FileNotFoundError as exc:
         raise CommandError("make is not installed") from exc
     except subprocess.CalledProcessError as exc:
@@ -162,7 +183,12 @@ def _run_make(manifest, targets: list[str]) -> None:
 def command_build(args: argparse.Namespace) -> None:
     manifest = _manifest(args.project)
     generate(manifest)
-    _run_make(manifest, [args.target] if args.target else [])
+    variables = []
+    if args.trace:
+        if not 1 <= args.trace_capacity <= 255:
+            raise CommandError("trace capacity must be between 1 and 255 frames")
+        variables = ["SWAN_TRACE=1", f"SWAN_TRACE_CAPACITY={args.trace_capacity}"]
+    _run_make(manifest, [args.target] if args.target else [], variables=variables)
     if args.target is None and manifest.hardware == "mono-compatible":
         root = Path(os.environ.get("WONDERFUL_TOOLCHAIN", "/opt/wonderful"))
         tool = root / "bin" / "wf-wswantool"
@@ -190,13 +216,33 @@ def command_test(args: argparse.Namespace) -> None:
     _run_make(manifest, ["test"])
 
 
-def command_play(args: argparse.Namespace) -> None:
-    manifest = _manifest(args.project)
-    generate(manifest)
-    scenario = next((item for item in manifest.play_scenarios if item.id == args.scenario), None)
-    if scenario is None:
-        choices = ", ".join(item.id for item in manifest.play_scenarios) or "none declared"
-        raise CommandError(f"unknown scenario {args.scenario!r}; available: {choices}")
+def _scenario_outcome_contract(manifest, scenario) -> dict[str, object] | None:
+    if scenario.outcome_contract is None:
+        return None
+    path = (manifest.root / scenario.outcome_contract).resolve()
+    try:
+        path.relative_to(manifest.root)
+    except ValueError as exc:
+        raise CommandError("scenario outcome contract must remain inside the project") from exc
+    return validate_outcome_contract(
+        _read_json_object(path, "scenario outcome contract")
+    )
+
+
+def _trace_from_evidence(evidence: dict[str, object]):
+    structured = evidence.get("deterministicTrace")
+    if isinstance(structured, dict):
+        return load_trace(structured)
+    encoded = evidence.get("deterministicTraceBase64")
+    if isinstance(encoded, str):
+        try:
+            return load_trace(base64.b64decode(encoded, validate=True))
+        except ValueError as exc:
+            raise TraceError("SwanSong returned invalid deterministicTraceBase64") from exc
+    return None
+
+
+def _play_scenario(manifest, scenario, *, verify_replay: bool) -> None:
     _, plan = load_plan(
         manifest.root, scenario.plan, ready_frames=manifest.play_ready_frames
     )
@@ -204,10 +250,90 @@ def command_play(args: argparse.Namespace) -> None:
     if not rom.is_file():
         raise CommandError(f"ROM is not built: {rom}; run swan build first")
     output = manifest.root / "build" / "swansong" / scenario.id
-    evidence = play(rom, plan, output=output, verify_replay=not args.no_verify_replay)
+    evidence = play(rom, plan, output=output, verify_replay=verify_replay)
+    contract = _scenario_outcome_contract(manifest, scenario)
+    if contract is not None:
+        trace = _trace_from_evidence(evidence)
+        if trace is None:
+            raise CommandError(
+                f"scenario {scenario.id!r} requires a deterministic runtime trace, "
+                "but this SwanSong build did not return one"
+            )
+        audio = validate_wav(
+            output / "audio.wav", signal_floor=scenario.audio_evidence.signal_floor,
+        )
+        audio["inspected"] = True
+        outcome = validate_scenario_outcome(contract, trace, audio=audio)
+        (output / "trace.swtr").write_bytes(encode_trace(trace))
+        (output / "trace.json").write_bytes(trace_json_bytes(trace))
+        (output / "outcome-report.json").write_bytes(outcome_report_bytes(outcome))
+        if not outcome["passed"]:
+            failed = ", ".join(
+                item["id"] for item in outcome["checks"] if not item["passed"]
+            )
+            raise CommandError(f"scenario outcome failed: {failed}")
     print(f"SwanSong evidence: {output}")
     if evidence.get("finalGameRasterSHA256"):
         print(f"Raster SHA-256: {evidence['finalGameRasterSHA256']}")
+
+
+def command_play(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    generate(manifest)
+    if args.all:
+        if args.scenario:
+            raise CommandError("swan play accepts either a scenario or --all, not both")
+        if not manifest.play_scenarios:
+            raise CommandError("project declares no SwanSong scenarios")
+        for scenario in manifest.play_scenarios:
+            _play_scenario(
+                manifest, scenario, verify_replay=not args.no_verify_replay,
+            )
+        return
+    if not args.scenario:
+        raise CommandError("swan play requires a scenario or --all")
+    scenario = next(
+        (item for item in manifest.play_scenarios if item.id == args.scenario), None
+    )
+    if scenario is None:
+        choices = ", ".join(item.id for item in manifest.play_scenarios) or "none declared"
+        raise CommandError(f"unknown scenario {args.scenario!r}; available: {choices}")
+    _play_scenario(manifest, scenario, verify_replay=not args.no_verify_replay)
+
+
+def command_outcome(args: argparse.Namespace) -> int:
+    manifest = _manifest(args.project)
+    scenario = next(
+        (item for item in manifest.play_scenarios if item.id == args.scenario), None
+    )
+    if scenario is None:
+        raise CommandError(f"unknown scenario {args.scenario!r}")
+    contract = _scenario_outcome_contract(manifest, scenario)
+    if contract is None:
+        raise CommandError(f"scenario {scenario.id!r} does not declare an outcome contract")
+    trace_path = Path(args.trace).resolve()
+    wav_path = Path(args.wav).resolve()
+    audio = validate_wav(wav_path, signal_floor=scenario.audio_evidence.signal_floor)
+    audio["inspected"] = args.inspected
+    audio["path"] = str(wav_path)
+    report = validate_scenario_outcome(contract, load_trace(trace_path), audio=audio)
+    report.update({
+        "project": manifest.id,
+        "scenario": scenario.id,
+        "traceFile": str(trace_path),
+        "wavFile": str(wav_path),
+    })
+    if args.output:
+        destination = _output_path(manifest, args.output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(outcome_report_bytes(report))
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        print(f"Scenario outcome: {'PASS' if report['passed'] else 'FAIL'}")
+        for check in report["checks"]:
+            print(f"[{'PASS' if check['passed'] else 'FAIL'}] {check['id']}")
+    return 0 if report["passed"] else 2
 
 
 def _human_dev_event(event: dict[str, object]) -> None:
@@ -240,6 +366,11 @@ def command_dev(args: argparse.Namespace) -> None:
 
 def command_release(args: argparse.Namespace) -> None:
     manifest = _manifest(args.project)
+    baseline = (
+        _read_json_object(Path(args.baseline_report).resolve(), "baseline resource report")
+        if args.baseline_report else None
+    )
+    allowed = _budget_allowances(args.allow_increase)
 
     def notify(name: str, status: str) -> None:
         if not args.json:
@@ -248,7 +379,8 @@ def command_release(args: argparse.Namespace) -> None:
     try:
         report = release_project(
             manifest, output=args.output, notes=args.notes,
-            timeout=args.timeout, notify=notify,
+            timeout=args.timeout, notify=notify, baseline_report=baseline,
+            allowed_budget_increase=allowed,
         )
     except OperationsError as exc:
         if not args.json:
@@ -294,6 +426,18 @@ def command_report(args: argparse.Namespace) -> None:
             f"linked Color extension area: {color_area} exceeds 49152 byte hardware limit"
         )
     report["budgetFailures"] = failures
+    baseline_path = getattr(args, "baseline_report", None)
+    if baseline_path:
+        history = compare_resource_reports(
+            report,
+            _read_json_object(Path(baseline_path).resolve(), "baseline resource report"),
+            allowed_increase=_budget_allowances(getattr(args, "allow_increase", [])),
+        )
+        report["budgetHistory"] = history
+        failures.extend(
+            "historical budget regression: " + item for item in history["regressions"]
+        )
+        report["budgetFailures"] = failures
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -317,6 +461,18 @@ def command_report(args: argparse.Namespace) -> None:
             print(f"{label:16} {display:>10} / {budget:<10} {unit}")
     if failures:
         raise CommandError("resource budget failure:\n  " + "\n  ".join(failures))
+
+
+def _budget_allowances(values: list[str] | None) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for value in values or []:
+        name, separator, raw = value.partition("=")
+        if not separator or not name or not raw.isdigit():
+            raise CommandError("budget allowance must be METRIC=NON_NEGATIVE_INTEGER")
+        if name in result:
+            raise CommandError(f"duplicate budget allowance for {name}")
+        result[name] = int(raw)
+    return result
 
 
 def _read_json_object(path: Path, label: str) -> dict[str, object]:
@@ -349,6 +505,32 @@ def command_scenario_record(args: argparse.Namespace) -> None:
         print(canonical_json(report), end="")
     else:
         print(f"Recorded {len(report['plan']['events'])} input transitions")
+        print(f"Plan: {destination}")
+
+
+def command_scenario_compile(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    source = _project_owned_path(manifest, args.script, label="scenario script")
+    document = _read_json_object(source, "scenario script")
+    report = compile_scenario_script(
+        document, ready_frames=manifest.play_ready_frames, source=source,
+    )
+    destination = _project_owned_path(manifest, args.output, label="scenario plan output")
+    if destination.suffix.lower() != ".json":
+        raise ScenarioScriptError("scenario plan output must use a .json suffix")
+    _write_new_file(
+        destination, canonical_json(report["plan"]).encode("utf-8"),
+        label="scenario plan",
+    )
+    report["project"] = manifest.id
+    report["output"] = str(destination)
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        print(
+            f"Compiled {report['expandedActions']} deterministic actions into "
+            f"{report['plan']['totalFrames']} frames"
+        )
         print(f"Plan: {destination}")
 
 
@@ -911,6 +1093,51 @@ def command_profile(args: argparse.Namespace) -> int:
 
 def command_optimize(args: argparse.Namespace) -> None:
     manifest = _manifest(args.project)
+    if args.revert:
+        if not args.report or not args.expected_report_sha256 or not args.approval:
+            raise OptimizationError(
+                "optimization revert requires --report, --expected-report-sha256, "
+                "and --approval artist-approved"
+            )
+        report = revert_approved_asset_optimization(
+            manifest.root, args.report,
+            expected_report_sha256=args.expected_report_sha256,
+            approval=args.approval,
+        )
+        report["project"] = manifest.id
+        if args.json:
+            print(canonical_json(report), end="")
+        else:
+            print(f"Reverted generated optimization: {report['removedOutput']}")
+            print("The original artist source remains unchanged.")
+        return
+    if args.apply:
+        if args.asset is None:
+            raise OptimizationError("optimization apply requires --asset")
+        if (not args.output or not args.report or not args.operation or
+                not args.expected_source_sha256 or not args.approval):
+            raise OptimizationError(
+                "optimization apply requires --output, --report, --operation, "
+                "--expected-source-sha256, and --approval artist-approved"
+            )
+        asset = next((item for item in manifest.assets if item.id == args.asset), None)
+        if asset is None or asset.type not in {
+                "fullscreen", "tilemap", "spritesheet", "metatiles", "font"}:
+            raise OptimizationError(f"unknown graphic asset {args.asset!r}")
+        report = apply_approved_asset_optimization(
+            manifest.root, asset.source, args.output, args.report,
+            asset_id=asset.id, operations=tuple(args.operation),
+            expected_source_sha256=args.expected_source_sha256,
+            approval=args.approval,
+        )
+        report["project"] = manifest.id
+        if args.json:
+            print(canonical_json(report), end="")
+        else:
+            print(f"Applied approved optimization: {report['output']['path']}")
+            print(f"Apply report SHA-256: {report['reportSHA256']}")
+            print("The original artist source remains unchanged.")
+        return
     graphic_types = {"fullscreen", "tilemap", "spritesheet", "metatiles", "font"}
     assets: dict[str, Path] = {}
     for asset in manifest.assets:
@@ -943,6 +1170,21 @@ def command_optimize(args: argparse.Namespace) -> None:
         print(f"Flip reuse savings: {totals['flipDedupeSavingsTiles']} tiles")
 
 
+def command_asset_import(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    report = import_asset(
+        manifest.root, args.source, args.destination, args.provenance_report,
+        expected_sha256=args.expected_sha256,
+    )
+    report["project"] = manifest.id
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        print(f"Imported asset: {report['destination']['path']}")
+        print(f"SHA-256: {report['destination']['sha256']}")
+        print(f"Provenance: {report['provenanceReport']}")
+
+
 def command_lab(args: argparse.Namespace) -> int:
     manifest = _manifest(args.project)
     complete = run_laboratory(
@@ -964,9 +1206,84 @@ def command_lab(args: argparse.Namespace) -> int:
     return 0 if report["passed"] else 2
 
 
+def command_audio_preview(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    source = _project_owned_path(manifest, args.source, label="audio source")
+    if not source.is_file():
+        raise AudioWorkbenchError(f"audio source does not exist: {source}")
+    destination = _project_owned_path(
+        manifest,
+        args.output or f"build/audio/{source.stem}.preview.wav",
+        label="audio preview output",
+    )
+    if destination.suffix.lower() != ".wav":
+        raise AudioWorkbenchError("audio preview output must use a .wav suffix")
+    report = render_music_preview(
+        source, output=destination, sample_rate=args.sample_rate,
+        loops=args.loops, replace=args.replace,
+    )
+    report["project"] = manifest.id
+    report["source"] = str(source)
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        metrics = report["metrics"]
+        print(f"Audio preview: {destination}")
+        print(
+            f"{metrics['rowCount']} rows, {metrics['maxPolyphony']} peak voices, "
+            f"{metrics['durationMilliseconds']} ms"
+        )
+        print("Authoring preview only; verify the cartridge WAV in SwanSong.")
+
+
+def command_audio_arbitrate(args: argparse.Namespace) -> None:
+    manifest = _manifest(args.project)
+    source = _project_owned_path(manifest, args.events, label="SFX event plan")
+    document = _read_json_object(source, "SFX event plan")
+    events = document.get("events")
+    if not isinstance(events, list):
+        raise AudioWorkbenchError("SFX event plan requires an events array")
+    report = simulate_sfx_arbitration(events, channels=args.channels)
+    report["project"] = manifest.id
+    report["source"] = str(source)
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        accepted = sum(1 for item in report["decisions"] if item["accepted"])
+        stolen = sum(1 for item in report["decisions"] if item["stolen"] is not None)
+        print(f"SFX arbitration: {accepted}/{len(events)} accepted, {stolen} channel steal(s)")
+
+
+def command_migrate(args: argparse.Namespace) -> None:
+    manifest_path = Path(args.project).resolve() if args.project else Path(find_manifest()).resolve()
+    if manifest_path.is_dir():
+        manifest_path /= "swan.toml"
+    identity = sdk_identity()
+    target_version = args.target_version or str(identity["version"])
+    target_revision = args.target_revision or str(identity["revision"])
+    report = plan_migration(
+        manifest_path, target_version=target_version,
+        target_revision=target_revision, target_schema=args.target_schema,
+    )
+    if args.apply:
+        report = apply_migration(report)
+    else:
+        report = dict(report)
+        report.pop("updatedText", None)
+    if args.json:
+        print(canonical_json(report), end="")
+    else:
+        action = "Applied" if report["applied"] else "Planned"
+        print(f"{action} {len(report['changes'])} migration change(s)")
+        for change in report["changes"]:
+            print(f"- {change['field']}: {change['before']} -> {change['after']}")
+        if not args.apply:
+            print("No files changed; rerun with --apply after reviewing this plan.")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="swan", description="Build deterministic WonderSwan games with SwanSong SDK")
-    result.add_argument("--version", action="version", version="swan 0.4.0")
+    result.add_argument("--version", action="version", version=f"swan {__version__}")
     commands = result.add_subparsers(dest="command", required=True)
 
     sdk_path_parser = commands.add_parser(
@@ -1006,18 +1323,48 @@ def parser() -> argparse.ArgumentParser:
         subcommand.add_argument("--project", help="path to swan.toml")
         if name == "report":
             subcommand.add_argument("--json", action="store_true")
+            subcommand.add_argument(
+                "--baseline-report",
+                help="previous swansong-resource-report-v1 JSON to compare",
+            )
+            subcommand.add_argument(
+                "--allow-increase", action="append", default=[], metavar="METRIC=AMOUNT",
+                help="allowed growth for one historical budget metric; may be repeated",
+            )
         subcommand.set_defaults(handler=handler)
 
     build = commands.add_parser("build", help="generate assets and build the ROM with Wonderful")
     build.add_argument("--project", help="path to swan.toml")
     build.add_argument("--target", help="optional Make target")
+    build.add_argument("--trace", action="store_true",
+                       help="build an opt-in deterministic runtime trace ROM")
+    build.add_argument("--trace-capacity", type=int, default=64,
+                       help="retained runtime frames for --trace (1..255)")
     build.set_defaults(handler=command_build)
 
     play_parser = commands.add_parser("play", help="execute one fresh-boot scenario using SwanSong only")
-    play_parser.add_argument("scenario")
+    play_parser.add_argument("scenario", nargs="?")
+    play_parser.add_argument("--all", action="store_true",
+                             help="execute every declared scenario from a fresh boot")
     play_parser.add_argument("--project", help="path to swan.toml")
     play_parser.add_argument("--no-verify-replay", action="store_true", help="skip the second bit-exact replay")
     play_parser.set_defaults(handler=command_play)
+
+    outcome = commands.add_parser(
+        "outcome", help="validate a SwanSong runtime trace and inspected WAV"
+    )
+    outcome.add_argument("scenario")
+    outcome.add_argument("--project", help="path to swan.toml")
+    outcome.add_argument("--trace", required=True,
+                         help="SwanSong-exported .swtr or trace JSON")
+    outcome.add_argument("--wav", required=True,
+                         help="WAV returned by the same SwanSong execution")
+    outcome.add_argument("--inspected", action="store_true",
+                         help="confirm the SwanSong WAV was actually inspected")
+    outcome.add_argument("--output", help="optional outcome report JSON")
+    outcome.add_argument("--json", action="store_true",
+                         help="emit swan-scenario-outcome-report-v1 JSON")
+    outcome.set_defaults(handler=command_outcome)
 
     dev = commands.add_parser(
         "dev", help="watch project inputs, rebuild, and replay a SwanSong scenario"
@@ -1051,6 +1398,19 @@ def parser() -> argparse.ArgumentParser:
     recorder.add_argument("--json", action="store_true",
                           help="emit swansong-scenario-record-report-v1 JSON")
     recorder.set_defaults(handler=command_scenario_record)
+
+    scenario_compile = commands.add_parser(
+        "scenario-compile",
+        help="compile tap, hold, chord, repeat, and wait macros into an exact-frame plan",
+    )
+    scenario_compile.add_argument("--project", help="path to swan.toml")
+    scenario_compile.add_argument("--script", required=True,
+                                  help="project-owned swansong-scenario-script-v1 JSON")
+    scenario_compile.add_argument("--output", required=True,
+                                  help="new project-owned exact-frame plan JSON")
+    scenario_compile.add_argument("--json", action="store_true",
+                                  help="emit swansong-scenario-compile-report-v1 JSON")
+    scenario_compile.set_defaults(handler=command_scenario_compile)
 
     author = commands.add_parser(
         "author", help="create, validate, report, and export visual authoring documents"
@@ -1189,10 +1549,44 @@ def parser() -> argparse.ArgumentParser:
     )
     optimize.add_argument("--project", help="path to swan.toml")
     optimize.add_argument("--asset", help="limit the preview to one graphic asset id")
-    optimize.add_argument("--output", help="optional JSON report destination")
+    mode = optimize.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true",
+                      help="apply a hash-bound, artist-approved optimization")
+    mode.add_argument("--revert", action="store_true",
+                      help="remove an unchanged generated optimization output")
+    optimize.add_argument("--output",
+                          help="preview report path, or generated PNG with --apply")
+    optimize.add_argument("--report",
+                          help="apply report path, or existing report with --revert")
+    optimize.add_argument("--operation", action="append", default=[],
+                          choices=("palette-reduction", "mono-conversion"),
+                          help="approved operation; repeat to preserve order")
+    optimize.add_argument("--expected-source-sha256",
+                          help="reviewed source digest required by --apply")
+    optimize.add_argument("--expected-report-sha256",
+                          help="reviewed apply-report digest required by --revert")
+    optimize.add_argument("--approval", choices=(ARTIST_APPROVAL,),
+                          help="explicit artist approval token")
     optimize.add_argument("--json", action="store_true",
                           help="emit swansong-asset-optimization-report-v1 JSON")
     optimize.set_defaults(handler=command_optimize)
+
+    asset_import = commands.add_parser(
+        "asset-import",
+        help="copy a reviewed external asset into a project with provenance",
+    )
+    asset_import.add_argument("--project", help="path to swan.toml")
+    asset_import.add_argument("--source", required=True,
+                              help="external source file")
+    asset_import.add_argument("--destination", required=True,
+                              help="new project-owned destination")
+    asset_import.add_argument("--provenance-report", required=True,
+                              help="new project-owned provenance JSON")
+    asset_import.add_argument("--expected-sha256", required=True,
+                              help="reviewed SHA-256 of the source bytes")
+    asset_import.add_argument("--json", action="store_true",
+                              help="emit swansong-asset-import-report-v1 JSON")
+    asset_import.set_defaults(handler=command_asset_import)
 
     laboratory = commands.add_parser(
         "lab", help="simulate save corruption, interrupted writes, RTC loss, and time travel"
@@ -1206,6 +1600,51 @@ def parser() -> argparse.ArgumentParser:
                             help="emit swansong-laboratory-report-v1 JSON")
     laboratory.set_defaults(handler=command_lab)
 
+    audio = commands.add_parser(
+        "audio", help="preview music and inspect deterministic SFX arbitration"
+    )
+    audio_actions = audio.add_subparsers(dest="audio_operation", required=True)
+    audio_preview = audio_actions.add_parser(
+        "preview", help="render a deterministic host-side authoring WAV"
+    )
+    audio_preview.add_argument("--project", help="path to swan.toml")
+    audio_preview.add_argument("--source", required=True,
+                               help="project-owned SwanSong music TOML")
+    audio_preview.add_argument("--output", help="project-owned .wav destination")
+    audio_preview.add_argument("--sample-rate", type=int, default=22050)
+    audio_preview.add_argument("--loops", type=int, default=1)
+    audio_preview.add_argument("--replace", action="store_true",
+                               help="replace an earlier authoring preview")
+    audio_preview.add_argument("--json", action="store_true",
+                               help="emit swansong-audio-workbench-report-v1 JSON")
+    audio_preview.set_defaults(handler=command_audio_preview)
+
+    audio_arbitrate = audio_actions.add_parser(
+        "arbitrate", help="explain fixed-priority SFX channel choices"
+    )
+    audio_arbitrate.add_argument("--project", help="path to swan.toml")
+    audio_arbitrate.add_argument("--events", required=True,
+                                 help="project-owned JSON document with an events array")
+    audio_arbitrate.add_argument("--channels", type=int, default=4)
+    audio_arbitrate.add_argument("--json", action="store_true",
+                                 help="emit swansong-sfx-arbitration-report-v1 JSON")
+    audio_arbitrate.set_defaults(handler=command_audio_arbitrate)
+
+    migrate = commands.add_parser(
+        "migrate", help="preview or apply a reversible manifest/SDK pin upgrade"
+    )
+    migrate.add_argument("--project", help="path to swan.toml or project directory")
+    migrate.add_argument("--target-version",
+                         help="target SDK semantic version; defaults to this SDK")
+    migrate.add_argument("--target-revision",
+                         help="target content revision; defaults to this SDK")
+    migrate.add_argument("--target-schema", type=int, default=1)
+    migrate.add_argument("--apply", action="store_true",
+                         help="atomically write the reviewed plan and a hash-named backup")
+    migrate.add_argument("--json", action="store_true",
+                         help="emit swansong-migration-report-v1 JSON")
+    migrate.set_defaults(handler=command_migrate)
+
     release = commands.add_parser(
         "release", help="run release gates and create a deterministic archive"
     )
@@ -1213,6 +1652,14 @@ def parser() -> argparse.ArgumentParser:
     release.add_argument("--output",
                          help="output .zip path or directory; defaults to project dist")
     release.add_argument("--notes", help="optional Markdown release notes")
+    release.add_argument(
+        "--baseline-report",
+        help="previous swansong-resource-report-v1 JSON included as a release growth gate",
+    )
+    release.add_argument(
+        "--allow-increase", action="append", default=[], metavar="METRIC=AMOUNT",
+        help="allowed growth for one historical budget metric; may be repeated",
+    )
     release.add_argument("--timeout", type=float, default=300.0,
                          help="timeout for each release gate")
     release.add_argument("--json", action="store_true",
@@ -1224,6 +1671,8 @@ def parser() -> argparse.ArgumentParser:
 _STRUCTURED_ERROR_SCHEMAS = {
     "doctor": "swansong-doctor-report-v1",
     "scenario-record": "swansong-scenario-record-report-v1",
+    "scenario-compile": "swansong-scenario-compile-report-v1",
+    "outcome": "swan-scenario-outcome-report-v1",
     "author": AUTHORING_REPORT_SCHEMA,
     "minimize": "swansong-minimize-report-v1",
     "replay": "swansong-replay-report-v1",
@@ -1231,7 +1680,10 @@ _STRUCTURED_ERROR_SCHEMAS = {
     "fuzz": "swansong-fuzz-report-v1",
     "profile": "swansong-profile-report-v1",
     "optimize": "swansong-asset-optimization-report-v1",
+    "asset-import": "swansong-asset-import-report-v1",
     "lab": "swansong-laboratory-report-v1",
+    "audio": "swansong-audio-workbench-report-v1",
+    "migrate": "swansong-migration-report-v1",
     "release": "swansong-release-report-v1",
 }
 
@@ -1302,11 +1754,12 @@ def main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv)
         status = args.handler(args)
         return status if isinstance(status, int) else 0
-    except (AuthoringError, CommandError, EvidenceError, FuzzError, GenerationError,
+    except (AssetImportError, AudioWorkbenchError, AuthoringError, BudgetHistoryError, CommandError,
+            EvidenceError, FuzzError, GenerationError,
             LaboratoryError, LayoutError, ManifestError, OptimizationError,
-            MinimizeError, OperationsError, OSError, PlanError, PNGError,
-            ProfileError, ReplayError, ScaffoldError, ScenarioError,
-            SwanSongError) as exc:
+            MigrationError, MinimizeError, OperationsError, OSError, PlanError, PNGError,
+            ProfileError, ReplayError, ScaffoldError, ScenarioError, TraceError,
+            ScenarioScriptError, SwanSongError) as exc:
         if args is not None and _emit_structured_error(args, exc):
             return 2
         print(f"swan: error: {exc}", file=sys.stderr)

@@ -6,6 +6,7 @@ import base64
 from collections import Counter
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 import struct
 from typing import Any, Mapping
@@ -15,6 +16,9 @@ from .png2bpp import Image, read_png
 
 
 SCHEMA = "swansong-asset-optimization-report-v1"
+APPLY_SCHEMA = "swansong-asset-optimization-apply-v1"
+REVERT_SCHEMA = "swansong-asset-optimization-revert-v1"
+ARTIST_APPROVAL = "artist-approved"
 
 
 class OptimizationError(ValueError):
@@ -200,6 +204,197 @@ def _analyze(asset_id: str, image: Image, source: str | None) -> dict[str, Any]:
     }
 
 
+def _canonical_json(value: object) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode(
+        "utf-8"
+    )
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _project_path(root: Path, value: str | Path, context: str) -> Path:
+    raw = Path(value)
+    candidate = (raw if raw.is_absolute() else root / raw).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise OptimizationError(f"{context} must remain inside the project") from exc
+    return candidate
+
+
+def _project_label(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _optimized_image(image: Image, operations: tuple[str, ...]) -> Image:
+    allowed = {"palette-reduction", "mono-conversion"}
+    if not operations or len(operations) != len(set(operations)):
+        raise OptimizationError("optimization operations must be a nonempty unique sequence")
+    unknown = [operation for operation in operations if operation not in allowed]
+    if unknown:
+        raise OptimizationError(f"unknown optimization operation {unknown[0]!r}")
+    result = image
+    for operation in operations:
+        if operation == "palette-reduction":
+            _, result = _palette_analysis(result)
+        else:
+            result, _, _ = _mono_image(result)
+    return result
+
+
+def apply_approved_asset_optimization(
+    project_root: str | Path,
+    source: str | Path,
+    output: str | Path,
+    report: str | Path,
+    *,
+    asset_id: str,
+    operations: tuple[str, ...],
+    expected_source_sha256: str,
+    approval: str,
+) -> dict[str, Any]:
+    """Apply an artist-approved preview without overwriting its source image.
+
+    The expected hash binds approval to the exact bytes that were previewed.
+    Reversal is lossless because the source is preserved and the generated
+    output is removed only when its recorded hash still matches.
+    """
+    if approval != ARTIST_APPROVAL:
+        raise OptimizationError("optimization apply requires explicit artist approval")
+    if not isinstance(asset_id, str) or not asset_id:
+        raise OptimizationError("asset_id must be a nonempty string")
+    root = Path(project_root).resolve()
+    source_path = _project_path(root, source, "optimization source")
+    output_path = _project_path(root, output, "optimization output")
+    report_path = _project_path(root, report, "optimization report")
+    if not source_path.is_file():
+        raise OptimizationError(f"optimization source does not exist: {source}")
+    if source_path == output_path:
+        raise OptimizationError("optimization output must not overwrite its source")
+    if output_path.suffix.lower() != ".png":
+        raise OptimizationError("optimization output must be a PNG")
+    if report_path.suffix.lower() != ".json":
+        raise OptimizationError("optimization report must be JSON")
+    if output_path.exists() or report_path.exists():
+        raise OptimizationError("optimization apply never overwrites output or reports")
+    if not isinstance(expected_source_sha256, str) or len(expected_source_sha256) != 64:
+        raise OptimizationError("expected_source_sha256 must be a SHA-256 hex digest")
+    try:
+        int(expected_source_sha256, 16)
+    except ValueError as exc:
+        raise OptimizationError("expected_source_sha256 must be a SHA-256 hex digest") from exc
+    source_digest = _file_sha256(source_path)
+    if source_digest != expected_source_sha256.lower():
+        raise OptimizationError("optimization source changed after artist approval")
+
+    image = read_png(source_path)
+    optimized = _optimized_image(image, operations)
+    payload = encode_rgba_png(optimized)
+    output_digest = hashlib.sha256(payload).hexdigest()
+    source_label = _project_label(root, source_path)
+    output_label = _project_label(root, output_path)
+    preview = _analyze(asset_id, image, source_label)
+    preview["sourceFileSHA256"] = source_digest
+    preview_report = AssetOptimizationReport((preview,)).to_dict()
+    preview_digest = hashlib.sha256(_canonical_json(preview_report)).hexdigest()
+    operation_report = {
+        "schema": APPLY_SCHEMA,
+        "asset": asset_id,
+        "approval": ARTIST_APPROVAL,
+        "operations": list(operations),
+        "source": {
+            "path": source_label,
+            "sha256": source_digest,
+            "preserved": True,
+        },
+        "preview": {"schema": SCHEMA, "sha256": preview_digest},
+        "output": {
+            "path": output_label,
+            "sha256": output_digest,
+            "bytes": len(payload),
+            "width": optimized.width,
+            "height": optimized.height,
+        },
+        "revert": {
+            "action": "delete-generated-output",
+            "path": output_label,
+            "expectedSHA256": output_digest,
+        },
+        "reportPath": _project_label(root, report_path),
+        "gameplayEvidence": False,
+    }
+    report_payload = _canonical_json(operation_report)
+    report_digest = hashlib.sha256(report_payload).hexdigest()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output_path.open("xb") as handle:
+            handle.write(payload)
+        with report_path.open("xb") as handle:
+            handle.write(report_payload)
+    except BaseException:
+        if output_path.is_file() and _file_sha256(output_path) == output_digest:
+            output_path.unlink()
+        raise
+    return {**operation_report, "reportSHA256": report_digest}
+
+
+def revert_approved_asset_optimization(
+    project_root: str | Path,
+    report: str | Path,
+    *,
+    expected_report_sha256: str,
+    approval: str,
+) -> dict[str, Any]:
+    """Remove an unchanged generated optimization output using its apply report."""
+    if approval != ARTIST_APPROVAL:
+        raise OptimizationError("optimization revert requires explicit artist approval")
+    root = Path(project_root).resolve()
+    report_path = _project_path(root, report, "optimization report")
+    if not report_path.is_file():
+        raise OptimizationError("optimization apply report does not exist")
+    report_payload = report_path.read_bytes()
+    report_digest = hashlib.sha256(report_payload).hexdigest()
+    if report_digest != expected_report_sha256.lower():
+        raise OptimizationError("optimization apply report changed after approval")
+    try:
+        applied = json.loads(report_payload)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise OptimizationError(f"invalid optimization apply report: {exc}") from exc
+    if not isinstance(applied, dict) or applied.get("schema") != APPLY_SCHEMA:
+        raise OptimizationError("optimization report has an unsupported schema")
+    source_record = applied.get("source")
+    output_record = applied.get("output")
+    if not isinstance(source_record, dict) or not isinstance(output_record, dict):
+        raise OptimizationError("optimization report is missing source or output bindings")
+    source_value = source_record.get("path")
+    output_value = output_record.get("path")
+    if (applied.get("approval") != ARTIST_APPROVAL or source_record.get("preserved") is not True or
+            not isinstance(source_value, str) or not isinstance(output_value, str)):
+        raise OptimizationError("optimization report has invalid approval or path bindings")
+    source_path = _project_path(root, source_value, "optimization source")
+    output_path = _project_path(root, output_value, "optimization output")
+    if source_path == output_path:
+        raise OptimizationError("optimization report cannot remove its source")
+    if not source_path.is_file() or _file_sha256(source_path) != source_record.get("sha256"):
+        raise OptimizationError("optimization source no longer matches the approved report")
+    if not output_path.is_file() or _file_sha256(output_path) != output_record.get("sha256"):
+        raise OptimizationError("optimization output changed; refusing destructive revert")
+    output_path.unlink()
+    return {
+        "schema": REVERT_SCHEMA,
+        "asset": applied.get("asset"),
+        "applyReport": _project_label(root, report_path),
+        "applyReportSHA256": report_digest,
+        "removedOutput": _project_label(root, output_path),
+        "removedOutputSHA256": output_record["sha256"],
+        "source": source_record,
+        "gameplayEvidence": False,
+    }
+
+
 def preview_asset_optimization(
     assets: Mapping[str, str | Path | Image] | str | Path | Image,
 ) -> AssetOptimizationReport:
@@ -222,5 +417,8 @@ def preview_asset_optimization(
             path = Path(source)
             image = read_png(path)
             label = str(path)
-        results.append(_analyze(asset_id, image, label))
+        result = _analyze(asset_id, image, label)
+        if not isinstance(source, Image):
+            result["sourceFileSHA256"] = _file_sha256(Path(source))
+        results.append(result)
     return AssetOptimizationReport(tuple(results))
