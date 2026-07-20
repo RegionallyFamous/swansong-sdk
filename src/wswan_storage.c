@@ -5,9 +5,9 @@
 static bool eeprom_size(uint16_t byte_count, uint8_t *address_bits) {
     if (address_bits == 0) return false;
     switch (byte_count) {
-        case 128: *address_bits = 6; return true;
+        case 128: *address_bits = 7; return true;
         case 1024: *address_bits = 10; return true;
-        case 2048: *address_bits = 10; return true;
+        case 2048: *address_bits = 11; return true;
         default: return false;
     }
 }

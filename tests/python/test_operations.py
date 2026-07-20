@@ -16,6 +16,7 @@ import wave
 import zipfile
 
 from swansong_sdk.generator import generate
+from swansong_sdk.evidence import validate_wav
 from swansong_sdk.identity import sdk_identity
 from swansong_sdk.layout import sdk_root
 from swansong_sdk.manifest import load_manifest
@@ -27,6 +28,10 @@ from swansong_sdk.operations import (
 from swansong_sdk.operations import _probe_swansong, _verified_evidence_files
 from swansong_sdk.scaffold import create_project
 from swansong_sdk.plans import load_plan
+from swansong_sdk.trace import (
+    TraceFrame, capture_from_frames, encode_trace, outcome_report_bytes,
+    trace_json_bytes, validate_outcome_contract, validate_scenario_outcome,
+)
 
 
 SWANSONG_SERVER = r'''
@@ -238,7 +243,9 @@ class OperationsTests(unittest.TestCase):
             result = development_session(
                 manifest, once=True, test_mode=True, runner=runner, sink=events.append,
             )
-            self.assertEqual(commands, [("build",), ("play", "interaction")])
+            self.assertEqual(
+                commands, [("build", "--trace"), ("play", "interaction")]
+            )
             self.assertEqual(result["type"], "stop")
             self.assertEqual([event["sequence"] for event in events], list(range(len(events))))
             self.assertTrue(all(event["schema"] == DEV_EVENT_SCHEMA for event in events))
@@ -287,6 +294,25 @@ class OperationsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             manifest = self.project(root)
+            outcome_path = manifest.root / "tests/outcomes/neutral.json"
+            outcome_path.parent.mkdir(parents=True, exist_ok=True)
+            outcome_path.write_text(json.dumps({
+                "schema": "swan-scenario-outcome-contract-v1",
+                "final": {
+                    "scene": 0, "ending": 0, "progress": 0,
+                    "stateHash": 123,
+                },
+                "reset": {"expectation": "none"},
+                "audio": {"expectation": "silent"},
+            }))
+            first_scenario = replace(
+                manifest.play_scenarios[0],
+                outcome_contract="tests/outcomes/neutral.json",
+            )
+            manifest = replace(
+                manifest,
+                play_scenarios=(first_scenario, *manifest.play_scenarios[1:]),
+            )
             calls: list[tuple[str, ...]] = []
             stale_evidence = False
             omit_observation = False
@@ -295,8 +321,12 @@ class OperationsTests(unittest.TestCase):
             def runner(command, unused_manifest, unused_timeout):
                 self.assertIs(unused_manifest, manifest)
                 calls.append(command)
-                if command == ("build",):
-                    (manifest.root / manifest.rom_name).write_bytes(b"ROM-fixture")
+                if command in {("build",), ("build", "--trace")}:
+                    payload = (
+                        b"TRACE-ROM-fixture"
+                        if command == ("build", "--trace") else b"ROM-fixture"
+                    )
+                    (manifest.root / manifest.rom_name).write_bytes(payload)
                     if manifest.hardware == "mono-compatible":
                         (manifest.root / "operation_game.ws").write_bytes(b"MONO-fixture")
                 if command[0] == "play":
@@ -340,6 +370,31 @@ class OperationsTests(unittest.TestCase):
                                 item: f"observed {item}" for item in scenario.required_checks
                             },
                         }, sort_keys=True) + "\n")
+                    if scenario.outcome_contract:
+                        trace = capture_from_frames((TraceFrame(
+                            boot_tick=1, session_tick=1, state_hash=123,
+                            input_held=0, input_pressed=0, input_released=0,
+                            actions_held=0, actions_pressed=0, actions_released=0,
+                            progress=0, audio_marker=0, transition_argument=0,
+                            reset_count=0, scene=0, transition_from=0xff,
+                            transition_to=0xff, ending=0, flags=0,
+                            sprites_visible=0, audio_voice_mask=0,
+                            audio_sfx_mask=0, maximum_sprites_on_scanline=0,
+                            panic_code=0,
+                        ),))
+                        contract = validate_outcome_contract(
+                            json.loads((manifest.root / scenario.outcome_contract).read_text())
+                        )
+                        audio = validate_wav(evidence / "audio.wav")
+                        audio["inspected"] = True
+                        outcome = validate_scenario_outcome(
+                            contract, trace, audio=audio
+                        )
+                        (evidence / "trace.swtr").write_bytes(encode_trace(trace))
+                        (evidence / "trace.json").write_bytes(trace_json_bytes(trace))
+                        (evidence / "outcome-report.json").write_bytes(
+                            outcome_report_bytes(outcome)
+                        )
                 stdout = ""
                 if command == ("report",):
                     stdout = json.dumps({
@@ -360,7 +415,7 @@ class OperationsTests(unittest.TestCase):
             self.assertEqual(first_bytes, output.read_bytes())
             self.assertEqual(first["packageSha256"], second["packageSha256"])
             self.assertEqual(first["schema"], RELEASE_SCHEMA)
-            expected_calls = 4 + len(manifest.play_scenarios)
+            expected_calls = 5 + len(manifest.play_scenarios)
             self.assertEqual(len(calls), expected_calls * 2)
             with zipfile.ZipFile(output) as archive:
                 names = archive.namelist()
@@ -371,6 +426,7 @@ class OperationsTests(unittest.TestCase):
                 self.assertTrue(any(name.endswith("sbom.cdx.json") for name in names))
                 self.assertTrue(any(name.endswith("sbom.spdx.json") for name in names))
                 self.assertTrue(any(name.endswith("release-notes.md") for name in names))
+                self.assertTrue(any(name.endswith("evidence/rom-bindings.json") for name in names))
                 for scenario in manifest.play_scenarios:
                     self.assertTrue(any(
                         name.endswith(f"evidence/{scenario.id}/evidence.json") for name in names
@@ -378,6 +434,11 @@ class OperationsTests(unittest.TestCase):
                     self.assertTrue(any(
                         name.endswith(f"evidence/{scenario.id}/observation.json") for name in names
                     ))
+                self.assertTrue(any(name.endswith("evidence/neutral/trace.swtr") for name in names))
+                self.assertTrue(any(name.endswith("evidence/neutral/trace.json") for name in names))
+                self.assertTrue(any(
+                    name.endswith("evidence/neutral/outcome-report.json") for name in names
+                ))
                 self.assertTrue(all(info.date_time == (1980, 1, 1, 0, 0, 0)
                                     for info in archive.infolist()))
             stale_evidence = True

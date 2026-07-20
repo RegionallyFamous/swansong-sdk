@@ -32,7 +32,11 @@ interfaces and metadata, and enforces all non-ROM budgets. SwanSong removes
 Wonderful's wall-clock banner so output is byte-stable on an unchanged input
 tree.
 
-## `swan build [--project PATH] [--target TARGET]`
+Visual authoring documents under `authoring` compile into typed C in the same
+pass. Graphic conversion uses a content-addressed cache, and
+`build/generated/input-graph.json` binds source hashes to generated outputs.
+
+## `swan build [--project PATH] [--target TARGET] [--trace]`
 
 Runs asset generation, invokes Make and Wonderful, then reports resource usage.
 The command fails on generation, compiler, linker, ROM-budget, or 8 MiB ceiling
@@ -40,13 +44,17 @@ errors. Every project builds a Color `.wsc` as the primary artifact. Projects
 declaring `mono-compatible` also build a WonderSwan `.ws` validation cartridge
 from the same stage-1 ELF and generated mono footer.
 
+`--trace` builds the opt-in deterministic diagnostic recorder. Use
+`--trace-capacity 1..255` to choose its retained tail. Release builds leave the
+trace recorder and marker arguments out.
+
 ## `swan test [--project PATH]`
 
 Regenerates derived files and runs the project's `make test` target. Recipes
 compile the exact portable model C used by the cartridge into a native host
 test executable.
 
-## `swan report [--project PATH] [--json]`
+## `swan report [--project PATH] [--baseline-report FILE] [--json]`
 
 Reports ROM bytes, declared game work RAM, Wonderful-linked total internal RAM,
 its separately linked 16 KiB mono and 48 KiB Color-extension areas, peak scene
@@ -55,7 +63,11 @@ bytes. Each linked area is checked against its physical hardware ceiling; the
 declared game reservation is checked against its project budget. JSON output uses the
 `swansong-resource-report-v1` contract.
 
-## `swan play SCENARIO [--project PATH]`
+When a baseline report is supplied, repeatable `--allow-increase
+METRIC=AMOUNT` flags make intentional growth explicit; any larger historical
+regression fails.
+
+## `swan play (SCENARIO | --all) [--project PATH]`
 
 Loads a declared fresh-boot frame plan and sends it exclusively to SwanSong's
 `swansong_playtest_plan` MCP tool. It requires screenshot, WAV, and structured
@@ -64,6 +76,20 @@ under `build/swansong`. `--no-verify-replay` is intended only for interactive
 diagnosis and must not be used for an acceptance result. Before execution,
 SwanSong rejects any declared scenario whose first non-neutral input precedes
 the manifest's `[play].ready_frames` boot/intro boundary.
+
+`--all` executes every declared plan from a separate fresh boot. Scenarios
+with an `outcome` contract also require SwanSong-exported deterministic trace
+data and gate their semantic state before passing.
+
+## `swan outcome`
+
+Usage: `swan outcome SCENARIO --trace TRACE --wav WAV --inspected`
+
+Validates a project scenario's semantic outcome contract against an exact
+SwanSong runtime trace and the inspected WAV from the same execution. The
+report fails on panics, state/progress/ending/reset mismatches, missing audio
+markers, or an uninspected audible/silent claim. JSON uses
+`swan-scenario-outcome-report-v1`.
 
 ## swan doctor
 
@@ -90,7 +116,7 @@ duration, so Desktop and CI can consume the contract without parsing prose.
 
 Usage: swan dev [--project PATH] [--scenario ID] [--once]
 
-Builds the project, executes a declared scenario through the existing
+Builds a diagnostic trace ROM, executes a declared scenario through the existing
 swan play contract, then polls swan.toml, Makefile, src, assets, tests, and
 every declared asset source. Changes are debounced; generated build and release
 outputs are excluded to prevent rebuild loops. The default scenario is
@@ -117,6 +143,14 @@ an editable exact-frame plan. The command refuses dropped or noncontiguous
 frames, normalizes controls, compresses unchanged inputs, preserves a neutral
 fresh boot, and writes `swan-song-frame-input-plan-v1`. JSON output uses
 `swansong-scenario-record-report-v1`.
+
+## swan scenario-compile
+
+Usage: `swan scenario-compile --script SCRIPT --output PLAN`
+
+Expands deterministic `waitFrames`, `tap`, `hold`, `chord`, and nested
+`repeat` steps into a bounded exact-frame plan after the manifest's neutral
+boot boundary. The new output is never overwritten.
 
 ## swan author
 
@@ -295,6 +329,39 @@ palette reduction, and a mono PNG variant without modifying source art. Empty
 projects return a valid zero-asset report. The artist-reviewed preview uses
 `swansong-asset-optimization-report-v1`.
 
+`--apply` additionally requires one `--asset`, a new PNG `--output`, a new
+JSON `--report`, one or more `--operation` values, the reviewed
+`--expected-source-sha256`, and `--approval artist-approved`. The source is
+preserved. `--revert` removes only an unchanged generated output and requires
+the exact apply-report SHA-256 plus the same explicit approval.
+
+## swan asset-import
+
+Usage: `swan asset-import --source FILE --destination PATH
+--provenance-report FILE --expected-sha256 DIGEST`
+
+Copies a reviewed file from a shared workspace into a new project-owned path.
+The source must match the supplied digest; destinations never escape the
+project or overwrite files. A provenance report binds the absolute source to
+the copied project bytes.
+
+## swan audio
+
+`swan audio preview` renders a deterministic host-side WAV for a project music
+TOML and reports loop seam, declared envelopes, channel activity, polyphony,
+and note events. `swan audio arbitrate` explains fixed-priority SFX acceptance
+and channel stealing. Both are authoring tools, not hardware evidence; accept
+audio only after listening to SwanSong's cartridge WAV.
+
+## swan migrate
+
+Usage: `swan migrate [--target-version VERSION] [--target-revision SHA] [--apply]`
+
+Previews manifest schema and SDK-pin changes. `--apply` rereads and hash-checks
+the reviewed source, writes a content-addressed backup, and atomically replaces
+the manifest. A changed manifest invalidates the plan instead of being merged
+implicitly.
+
 ## swan lab
 
 Usage: swan lab --project PATH [--case all|save|rtc] [--rtc-seed UNIX] [--json]
@@ -307,12 +374,18 @@ uses `swansong-laboratory-report-v1`.
 
 ## swan release
 
-Usage: swan release [--project PATH] [--output PATH] [--notes PATH] [--json]
+Usage: swan release [--project PATH] [--output PATH] [--notes PATH] [--baseline-report FILE] [--json]
 
-Runs, in order, the assets, build, host-test, JSON resource-report, and every
-declared SwanSong play gate. Each child command is invoked without a shell and
-with a timeout. A failed, timed-out, malformed, or missing gate stops the
-release before packaging.
+Runs, in order, assets, a diagnostic trace build, host tests, every declared
+SwanSong play gate, a clean non-trace release build, and the JSON resource
+report for that release ROM. Each child command is invoked without a shell and
+with a timeout. A failed, timed-out, malformed, or missing gate stops packaging.
+Diagnostic evidence remains bound to the exact validation-ROM digest; the
+packaged `evidence/rom-bindings.json` separately identifies that ROM and the
+final non-trace release ROM. The diagnostic ROM itself is not packaged.
+
+A baseline resource report applies the same historical budget gate as `swan
+report`; the comparison is packaged as `budget-history.json`.
 
 Each play gate must also have `build/swansong/<scenario>/observation.json` using
 `swan-song-evidence-observation-v1`. The record binds the ROM, PNG, and WAV

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/scenario-compile-report.schema.json",
+  "title": "SwanSong scenario compile report v1",
+  "type": "object",
+  "required": ["schema", "plan", "expandedActions", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-scenario-compile-report-v1"},
+    "plan": {"$ref": "frame-input-plan.schema.json"},
+    "expandedActions": {"type": "integer", "minimum": 0},
+    "gameplayEvidence": {"const": false}
+  },
+  "additionalProperties": true
+}

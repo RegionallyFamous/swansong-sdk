@@ -99,6 +99,7 @@ class PlayScenario:
     audio_evidence: AudioEvidenceThresholds = field(
         default_factory=AudioEvidenceThresholds
     )
+    outcome_contract: str | None = None
 
     @property
     def audio(self) -> bool:
@@ -468,13 +469,17 @@ def load_manifest(path: str | Path = "swan.toml") -> Manifest:
             ),
         )
         scenarios.append(PlayScenario(
-            scenario_id,
-            _string(item, "title", context=context),
-            _string(item, "goal", context=context),
-            _string(item, "plan", context=context),
-            required_checks,
-            audio_expectation,
-            audio_evidence,
+            id=scenario_id,
+            title=_string(item, "title", context=context),
+            goal=_string(item, "goal", context=context),
+            plan=_string(item, "plan", context=context),
+            required_checks=required_checks,
+            audio_expectation=audio_expectation,
+            audio_evidence=audio_evidence,
+            outcome_contract=(
+                _string(item, "outcome", context=context)
+                if item.get("outcome") is not None else None
+            ),
         ))
 
     budget_table = _table(data, "budgets")

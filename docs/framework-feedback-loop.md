@@ -30,6 +30,21 @@ The first canaries produced two permanent rules:
    Scenario review compares scheduled SwanSong frames with the game's session
    tick so a delivered button transition cannot be mistaken for a sampled
    gameplay action when a slow renderer misses VBlanks.
+4. Repeated camera, collision, selection, pool, animation, path, and dirty-grid
+   code belongs in bounded primitives with exhaustion tests. Tidewheel
+   Traverse now exercises this layer with independent background scroll rates
+   and a mono build instead of carrying another game-local copy.
+5. A visual change is not proof of progress. Trace builds accept explicit,
+   canonical state/progress/ending/audio markers; release builds compile those
+   markers out. Scenario outcomes and inspected PNG/WAV evidence are separate
+   gates and both must pass where declared.
+6. Artist sources stay authoritative. Shared files enter through hash-bound
+   copy plus provenance, generated optimizations require explicit approval,
+   originals are preserved, and rollback refuses modified output or reports.
+7. The build records a content-addressed input graph and caches Wonderful
+   conversions. If a recurring edit still rebuilds an unrelated asset, treat
+   that dependency edge as framework friction and add a regression test before
+   the next game.
 
 For each game, append measured ROM, RAM reservation, peak tiles, palettes,
 sprites, scanline sprites, and audio bytes to its review. If a limit cannot be

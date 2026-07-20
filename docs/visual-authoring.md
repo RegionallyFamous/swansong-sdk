@@ -41,10 +41,9 @@ palette indices plus horizontal/vertical flip flags. Coordinates are checked
 against the declared dimensions; duplicate cells in one layer are rejected.
 The document references a project-relative PNG tileset source.
 
-Export writes `swansong-author-handoff-v1` JSON. The current Wonderful-backed
-asset pipeline consumes a composed tilemap PNG, not this sparse editor model,
-so the handoff names the referenced PNG and `tilemap` manifest asset type
-without pretending to compile it.
+`swan assets` compiles the sparse layers and scroll origins into a typed,
+far-ROM C descriptor while the referenced project PNG remains the Wonderful
+tile source. Export can still produce a hash-bound handoff for another tool.
 
 ### Sprite animations and hitboxes
 
@@ -54,26 +53,25 @@ looping, and flips. Per-frame hitboxes use `solid`, `hurt`, `attack`, or
 `trigger` kinds and signed origin-relative positions. Every frame reference is
 validated.
 
-Export writes a hash-bound JSON handoff naming the existing `spritesheet`
-asset lane. The PNG remains the Wonderful source; animation and hitbox policy
-belongs in the portable game model until a future SDK generator explicitly
-adopts this handoff.
+`swan assets` compiles frame rectangles, animation steps, looping/flips, and
+hitboxes into typed C. The PNG remains the Wonderful sprite-sheet source.
 
 ### Palettes and mono mappings
 
 `swansong-author-palette-v1` holds 1–16 `#RRGGBB` colors, one 0–3 mono shade
 per color, and an optional transparent index. Export writes a deterministic
 8-pixel-high PNG swatch that the existing graphics pipeline can decode. The
-mono mapping remains in the authoring document and the export report states
-that limitation; the swatch is an art source/preview, not a screenshot.
+mono mapping also compiles into typed ROM data; the swatch remains an art
+source/preview, not a screenshot.
 
 ### Collision regions and paths
 
 `swansong-author-collision-v1` defines pixel bounds, open or closed region
 polylines, collision kinds, and named movement paths with per-point frame
 waits. All points are integer and in bounds. Export is a hash-bound JSON
-handoff for a portable C game model; the SDK does not introduce runtime
-allocation, physics, or a second rule engine.
+handoff for a portable C game model. `swan assets` also compiles regions and
+paths into typed static tables; the SDK does not introduce runtime allocation,
+physics, or a second rule engine.
 
 ### Scene flow
 
@@ -82,7 +80,8 @@ scene, and event-labelled deferred transitions with 16-bit arguments. Events
 are identifiers, not executable expressions. References and duplicate
 `from`/`event` routes are rejected. Reports warn about scenes unreachable from
 the initial scene. Export is an explicit handoff for the SDK's generated
-static scene-dispatch boundary.
+static scene-dispatch boundary. `swan assets` emits typed scene and transition
+tables without far-function-pointer dispatch.
 
 ### Audio patterns and instruments
 
@@ -94,7 +93,8 @@ volumes use 0–15 or `hold`. Tempo is the existing Q8 frames-per-row value.
 Export writes the exact music TOML already accepted by `swan assets`, mapping
 editor IDs to deterministic instrument indices and editor-friendly hold/off
 values to the runtime's 254/255 commands. It does not audition or synthesize
-audio and is not WAV evidence.
+audio and is not WAV evidence. Use `swan audio preview` for an approximate host
+audition and accept only the decoded, listened-to SwanSong cartridge WAV.
 
 ## Schema and integration inventory
 
@@ -103,6 +103,11 @@ The distributable schema directory includes one schema per document plus
 Semantic validation in `swansong_sdk.authoring` additionally checks
 cross-field rules such as references, uniqueness, coordinate bounds, and mono
 mapping length that JSON Schema alone cannot fully express.
+
+Generation writes typed headers/sources, `authoring-report.json`, and
+`sources.mk` under `build/generated`. The report binds document and dependency
+hashes; stale generated authoring outputs are removed when their source
+document is removed.
 
 Desktop may render previews, timelines, canvases, graphs, and property panels
 from these documents. It should call `swan author validate` after edits and

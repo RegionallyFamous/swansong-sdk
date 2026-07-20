@@ -6,10 +6,12 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 
 from swansong_sdk.cli import _parse_linked_usage, _run_make, main
+from swansong_sdk.identity import _payload_files
 from swansong_sdk.operations import OperationsError
 
 
@@ -49,6 +51,24 @@ class CliTests(unittest.TestCase):
             "docs/supply-chain.md", "toolchain.lock",
         ):
             self.assertTrue((root / relative).is_file(), relative)
+
+    def test_package_data_covers_the_complete_identity_payload(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        configuration = tomllib.loads((root / "pyproject.toml").read_text())
+        declared: set[str] = set()
+        for patterns in configuration["tool"]["setuptools"]["data-files"].values():
+            for pattern in patterns:
+                matches = sorted(root.glob(pattern))
+                self.assertTrue(matches, pattern)
+                declared.update(
+                    path.relative_to(root).as_posix()
+                    for path in matches if path.is_file()
+                )
+        expected = {
+            name for name, _ in _payload_files()
+            if not name.startswith("python/swansong_sdk/")
+        }
+        self.assertEqual(declared, expected)
 
     def test_parses_wonderful_linked_iram_usage(self) -> None:
         output = """Section           Used    Free  Free%

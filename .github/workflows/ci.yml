@@ -91,6 +91,10 @@ jobs:
             template: arcade-action
           - id: signal-orchard
             template: grid-tactics
+          - id: daybreak-ledger
+            template: utility-app
+          - id: tidewheel-traverse
+            template: arcade-action
     steps:
       - uses: actions/checkout@v6
       - name: Install Python and host compiler
@@ -99,10 +103,12 @@ jobs:
           apt-get install --yes --no-install-recommends python3 python3-pip build-essential
       - name: Build and install the isolated SDK wheel
         run: |
+          PYTHONPATH=python python3 -c 'from swansong_sdk.identity import sdk_identity; print(sdk_identity()["revision"])' > /tmp/source-sdk-identity
           python3 -m pip wheel --no-deps --wheel-dir /tmp/wheel .
           python3 -m pip install --break-system-packages --no-deps /tmp/wheel/*.whl
           cd /tmp
           python3 -P -c 'import importlib.metadata, swansong_sdk; assert swansong_sdk.__version__ == importlib.metadata.version("swansong-sdk")'
+          python3 -P -c 'from pathlib import Path; from swansong_sdk.identity import sdk_identity; assert sdk_identity()["revision"] == Path("/tmp/source-sdk-identity").read_text().strip()'
       - name: Scaffold and validate production canary through installed swan
         env:
           SWANSONG_TOOLCHAIN_LANE: ci
@@ -113,4 +119,4 @@ jobs:
             --source "$GITHUB_WORKSPACE/examples/canaries/${{ matrix.id }}" \
             --work-root /tmp/canary-${{ matrix.id }} \
             --template ${{ matrix.template }} > /tmp/${{ matrix.id }}-gate.json
-          python3 -c 'import json,sys; value=json.load(open(sys.argv[1])); assert value["commands"] == ["new", "assets", "test", "build", "report"]; assert value["romBytes"] <= 8*1024*1024' /tmp/${{ matrix.id }}-gate.json
+          python3 -c 'import json,sys; value=json.load(open(sys.argv[1])); assert value["commands"] == ["new", "assets", "test", "build", "report"]; assert value["romBytes"] <= 8*1024*1024; assert value["monoROMBytes"] is None or value["monoROMBytes"] <= 8*1024*1024' /tmp/${{ matrix.id }}-gate.json

@@ -65,6 +65,17 @@ void swan_core_init(const swan_core_config_t *config) {
 }
 
 void swan_core_step(uint16_t raw_keys) {
+#if SWAN_DETERMINISTIC_TRACE
+    const swan_gfx_frame_usage_t *usage;
+    const swan_audio_voice_t *voices;
+    uint8_t trace_flags = 0;
+    uint8_t transition_from = SWAN_SCENE_NONE;
+    uint8_t transition_to = SWAN_SCENE_NONE;
+    uint16_t transition_argument = 0;
+    uint8_t audio_voice_mask = 0;
+    uint8_t audio_sfx_mask = 0;
+    uint8_t channel;
+#endif
     if (!core.initialized) {
         SWAN_ASSERT(false, SWAN_PANIC_PLATFORM);
         return;
@@ -73,13 +84,61 @@ void swan_core_step(uint16_t raw_keys) {
     ++core.frame.boot_tick;
     ++core.frame.session_tick;
     swan_audio_tick();
+#if SWAN_DETERMINISTIC_TRACE
+    swan_debug_frame_internal_begin(core.scenes.current, core.frame.boot_tick,
+                                    core.frame.session_tick, core.frame.input);
+#endif
     swan_scene_update(core.scenes.current, &core.frame);
-    if (swan_scene_apply(&core.scenes)) core.dirty = true;
+#if SWAN_DETERMINISTIC_TRACE
+    if (core.dirty) trace_flags |= SWAN_DEBUG_FRAME_DIRTY;
+    if (core.scenes.pending != SWAN_SCENE_NONE) {
+        transition_from = core.scenes.current;
+        transition_to = core.scenes.pending;
+        transition_argument = core.scenes.pending_argument;
+    }
+#endif
+    if (swan_scene_apply(&core.scenes)) {
+        core.dirty = true;
+#if SWAN_DETERMINISTIC_TRACE
+        trace_flags |= SWAN_DEBUG_FRAME_DIRTY;
+#endif
+    }
     if (core.dirty || core.animated) {
+#if SWAN_DETERMINISTIC_TRACE
+        trace_flags |= SWAN_DEBUG_FRAME_RENDERED;
+        if (core.animated) trace_flags |= SWAN_DEBUG_FRAME_ANIMATED;
+#endif
         swan_scene_render(core.scenes.current);
         core.dirty = false;
     }
-    if (swan_gfx_dirty()) swan_gfx_present();
+    if (swan_gfx_dirty()) {
+#if SWAN_DETERMINISTIC_TRACE
+        trace_flags |= SWAN_DEBUG_FRAME_PRESENTED;
+#endif
+        swan_gfx_present();
+    }
+#if SWAN_DETERMINISTIC_TRACE
+    usage = swan_gfx_internal_frame_usage();
+    if (usage->scanline_overflow)
+        trace_flags |= SWAN_DEBUG_FRAME_SPRITE_OVERFLOW;
+    voices = swan_audio_voices();
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        if (voices[channel].owner != SWAN_VOICE_SILENT &&
+                voices[channel].note != SWAN_AUDIO_NOTE_OFF &&
+                voices[channel].volume != 0)
+            audio_voice_mask |= (uint8_t)(1u << channel);
+        if (voices[channel].owner == SWAN_VOICE_SFX &&
+                voices[channel].note != SWAN_AUDIO_NOTE_OFF &&
+                voices[channel].volume != 0)
+            audio_sfx_mask |= (uint8_t)(1u << channel);
+    }
+    swan_debug_frame_internal_end(
+        core.frame.boot_tick, core.frame.session_tick, core.scenes.current,
+        transition_from, transition_to, transition_argument, trace_flags,
+        usage->sprites_visible, usage->maximum_sprites_on_scanline,
+        audio_voice_mask, audio_sfx_mask,
+        (uint8_t)swan_debug_state()->code);
+#endif
 }
 
 void swan_core_reset_session(void) {
@@ -89,6 +148,9 @@ void swan_core_reset_session(void) {
     swan_platform_reset_audio_hardware();
     swan_gfx_hide_sprites();
     core.dirty = true;
+#if SWAN_DETERMINISTIC_TRACE
+    swan_debug_frame_internal_session_reset();
+#endif
 }
 
 bool swan_core_request_scene(swan_scene_id_t scene, uint16_t argument) {

@@ -18,6 +18,7 @@ from typing import Callable, Iterable
 import zipfile
 
 from . import __version__
+from .budget_history import BudgetHistoryError, compare_resource_reports
 from .evidence import EvidenceError, validate_wav
 from .identity import sdk_identity
 from .layout import LayoutError, sdk_root
@@ -28,6 +29,10 @@ from .provenance import (
     ProvenanceError, supply_chain_artifacts, validate_provenance,
 )
 from .swansong import SwanSongError, probe_server, server_command
+from .trace import (
+    TraceError, load_trace, outcome_report_bytes, validate_outcome_contract,
+    validate_scenario_outcome,
+)
 
 
 DOCTOR_SCHEMA = "swansong-doctor-report-v1"
@@ -303,6 +308,15 @@ def _project_source_status(manifest: Manifest) -> tuple[bool, str, dict[str, obj
             )
         except PlanError as exc:
             missing.append(str(exc))
+        if scenario.outcome_contract:
+            outcome = (root / scenario.outcome_contract).resolve()
+            try:
+                outcome.relative_to(root)
+            except ValueError:
+                escaped.append(scenario.outcome_contract)
+            else:
+                if not outcome.is_file():
+                    missing.append(str(outcome))
     details: dict[str, object] = {
         "assetCount": len(manifest.assets),
         "projectRoot": str(root),
@@ -387,11 +401,28 @@ def doctor_report(project: str | Path | None = None, *, timeout: float = 5.0) ->
             "schema/author-audio.schema.json",
             "schema/author-operation-report.schema.json",
             "schema/author-handoff.schema.json",
+            "schema/deterministic-trace.schema.json",
+            "schema/scenario-outcome-contract.schema.json",
+            "schema/scenario-outcome-report.schema.json",
+            "schema/scenario-script.schema.json",
+            "schema/scenario-compile-report.schema.json",
+            "schema/input-graph.schema.json",
+            "schema/asset-import-report.schema.json",
+            "schema/asset-optimization-apply.schema.json",
+            "schema/asset-optimization-revert.schema.json",
+            "schema/audio-workbench-report.schema.json",
+            "schema/authoring-compilation-report.schema.json",
+            "schema/budget-diff-report.schema.json",
+            "schema/migration-report.schema.json",
+            "schema/sfx-arbitration-report.schema.json",
             "templates/common/Makefile.tmpl",
             "CHANGELOG.md",
             "docs/input-gestures.md",
             "docs/release-notes-0.3.1.md",
             "docs/release-notes-0.4.0.md",
+            "docs/release-notes-0.5.0.md",
+            "docs/gameplay-primitives.md",
+            "docs/trace-and-outcomes.md",
             "docs/supply-chain.md",
             "toolchain.lock",
         )
@@ -525,7 +556,7 @@ def _watch_files(manifest: Manifest) -> set[Path]:
 
     include(root / "swan.toml")
     include(root / "Makefile")
-    for directory in (root / "src", root / "assets", root / "tests"):
+    for directory in (root / "src", root / "assets", root / "authoring", root / "tests"):
         if directory.is_dir():
             for path in directory.rglob("*"):
                 if path.is_file():
@@ -655,8 +686,10 @@ def development_session(manifest: Manifest, *, scenario: str | None = None,
     def rebuild(changed: list[str]) -> None:
         nonlocal builds
         emit("change", changed=changed)
-        for command in (("build",), ("play", selected)):
-            label = command[0] if len(command) == 1 else ":".join(command)
+        for command in (("build", "--trace"), ("play", selected)):
+            label = "build:trace" if command == ("build", "--trace") else (
+                command[0] if len(command) == 1 else ":".join(command)
+            )
             emit("gate", gate=label, status="started")
             try:
                 _gate(command, manifest, timeout, runner)
@@ -884,12 +917,55 @@ def _verified_evidence_files(manifest: Manifest, scenario: object,
             f"play:{scenario_id} lacks a bound inspected pass: "
             + ", ".join(inspection_failures)
         )
-    return {
+    packaged = {
         f"evidence/{scenario_id}/frame.png": png,
         f"evidence/{scenario_id}/audio.wav": wav,
         f"evidence/{scenario_id}/evidence.json": metadata_payload,
         f"evidence/{scenario_id}/observation.json": observation_payload,
     }
+    outcome_contract = getattr(scenario, "outcome_contract", None)
+    if outcome_contract:
+        contract_path = (manifest.root / str(outcome_contract)).resolve()
+        try:
+            contract_path.relative_to(manifest.root)
+            contract = validate_outcome_contract(json.loads(contract_path.read_text()))
+            trace_path = source / "trace.swtr"
+            trace_payload = _read_release_bytes(trace_path, f"{scenario_id} trace")
+            trace = load_trace(trace_payload)
+            inspected_audio = dict(wav_metrics)
+            inspected_audio["inspected"] = observation.get("wavInspected") is True
+            report = validate_scenario_outcome(contract, trace, audio=inspected_audio)
+            report_payload = _read_release_bytes(
+                source / "outcome-report.json", f"{scenario_id} outcome report"
+            )
+            if not report["passed"]:
+                failed = ", ".join(
+                    item["id"] for item in report["checks"] if not item["passed"]
+                )
+                raise OperationsError(
+                    f"play:{scenario_id} semantic outcome failed: {failed}"
+                )
+            if report_payload != outcome_report_bytes(report):
+                raise OperationsError(
+                    f"play:{scenario_id} outcome report is stale or modified"
+                )
+            trace_json = _read_release_bytes(
+                source / "trace.json", f"{scenario_id} trace JSON"
+            )
+            if load_trace(trace_json) != trace:
+                raise OperationsError(
+                    f"play:{scenario_id} trace JSON does not match trace.swtr"
+                )
+        except (OSError, ValueError, json.JSONDecodeError, TraceError) as exc:
+            raise OperationsError(
+                f"play:{scenario_id} has invalid semantic outcome evidence: {exc}"
+            ) from exc
+        packaged.update({
+            f"evidence/{scenario_id}/trace.swtr": trace_payload,
+            f"evidence/{scenario_id}/trace.json": trace_json,
+            f"evidence/{scenario_id}/outcome-report.json": report_payload,
+        })
+    return packaged
 
 
 def release_project(manifest: Manifest, *, output: str | Path | None = None,
@@ -897,6 +973,8 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
                     runner: GateRunner = run_cli_gate,
                     notify: NoticeSink | None = None,
                     provenance_resolver: ProvenanceResolver = _release_provenance,
+                    baseline_report: dict[str, object] | None = None,
+                    allowed_budget_increase: dict[str, int] | None = None,
                     ) -> dict[str, object]:
     if timeout <= 0:
         raise OperationsError("release gate timeout must be greater than zero")
@@ -934,11 +1012,15 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
     report: dict[str, object] | None = None
     verified_evidence: dict[str, bytes] = {}
     commands: list[tuple[str, ...]] = [
-        ("assets",), ("build",), ("test",), ("report",),
+        ("assets",), ("build", "--trace"), ("test",),
         *(("play", scenario.id) for scenario in manifest.play_scenarios),
+        ("build",), ("report",),
     ]
+    validation_rom_sha256: str | None = None
     for command in commands:
-        name = command[0] if len(command) == 1 else ":".join(command)
+        name = "build:trace" if command == ("build", "--trace") else (
+            command[0] if len(command) == 1 else ":".join(command)
+        )
         if notify:
             notify(name, "started")
         try:
@@ -959,6 +1041,13 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
             if command[0] == "play":
                 rom_path = manifest.root / manifest.rom_name
                 rom_for_evidence = _read_release_bytes(rom_path, "built ROM")
+                observed_rom_sha256 = _sha256(rom_for_evidence)
+                if validation_rom_sha256 is None:
+                    validation_rom_sha256 = observed_rom_sha256
+                elif validation_rom_sha256 != observed_rom_sha256:
+                    raise OperationsError(
+                        "diagnostic ROM changed between release play scenarios"
+                    )
                 scenario = next(
                     item for item in manifest.play_scenarios if item.id == command[1]
                 )
@@ -974,18 +1063,57 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
             notify(name, "passed")
     if report is None:
         raise OperationsError("release report gate did not run")
+    budget_history: dict[str, object] | None = None
+    if baseline_report is not None:
+        if baseline_report.get("schema") != "swansong-resource-report-v1":
+            raise OperationsError("baseline report uses an unsupported schema")
+        try:
+            budget_history = compare_resource_reports(
+                report, baseline_report,
+                allowed_increase=allowed_budget_increase,
+            )
+        except BudgetHistoryError as exc:
+            raise OperationsError(str(exc)) from exc
+        if not budget_history["ok"]:
+            raise OperationsError(
+                "historical budget regression: "
+                + ", ".join(str(item) for item in budget_history["regressions"])
+            )
 
     rom = manifest.root / manifest.rom_name
     if not rom.is_file():
         raise OperationsError(f"build gate did not produce {manifest.rom_name}")
     rom_payload = _read_release_bytes(rom, "built ROM")
+    if validation_rom_sha256 is None:
+        raise OperationsError("release play gates did not bind a diagnostic ROM")
+    release_rom_sha256 = _sha256(rom_payload)
 
     files: dict[str, bytes] = {
         f"rom/{rom.name}": rom_payload,
         "provenance.json": canonical_json(provenance).encode(),
         "report.json": canonical_json(report).encode(),
         "release-notes.md": _release_notes(manifest, Path(notes).resolve() if notes else None),
+        "evidence/rom-bindings.json": canonical_json({
+            "schema": "swan-release-rom-bindings-v1",
+            "validationROM": {
+                "buildMode": "diagnostic-trace-requested",
+                "packaged": False,
+                "sha256": validation_rom_sha256,
+            },
+            "releaseROM": {
+                "buildMode": "release",
+                "packaged": True,
+                "path": f"rom/{rom.name}",
+                "sha256": release_rom_sha256,
+            },
+            "scenarios": [
+                {"id": scenario.id, "romSHA256": validation_rom_sha256}
+                for scenario in manifest.play_scenarios
+            ],
+        }).encode(),
     }
+    if budget_history is not None:
+        files["budget-history.json"] = canonical_json(budget_history).encode()
     mono = manifest.root / (manifest.id.replace("-", "_") + ".ws")
     if manifest.hardware == "mono-compatible" and not mono.is_file():
         raise OperationsError(f"build gate did not produce mono validation ROM {mono.name}")
@@ -1027,4 +1155,5 @@ def release_project(manifest: Manifest, *, output: str | Path | None = None,
             if isinstance(provenance.get("toolchain"), dict) else None
         ),
         "version": manifest.version,
+        "budgetHistory": budget_history,
     }

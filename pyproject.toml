@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swansong-sdk"
-version = "0.4.0"
+version = "0.5.0"
 description = "Deterministic WonderSwan game framework tooling"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,35 +32,51 @@ where = ["python"]
 "share/swansong-sdk" = ["CHANGELOG.md", "toolchain.lock"]
 "share/swansong-sdk/include/swan" = [
   "include/swan/assets.h",
+  "include/swan/animation.h",
   "include/swan/audio.h",
+  "include/swan/camera.h",
+  "include/swan/collision.h",
   "include/swan/core.h",
   "include/swan/debug.h",
   "include/swan/gfx.h",
+  "include/swan/grid.h",
   "include/swan/input.h",
   "include/swan/legacy.h",
+  "include/swan/path.h",
+  "include/swan/pool.h",
   "include/swan/random.h",
   "include/swan/rtc.h",
   "include/swan/save.h",
   "include/swan/scene.h",
+  "include/swan/state.h",
   "include/swan/swan.h",
   "include/swan/types.h",
+  "include/swan/tile_grid.h",
   "include/swan/version.h",
   "include/swan/wswan.h",
 ]
 "share/swansong-sdk/src" = [
   "src/assets.c",
+  "src/animation.c",
   "src/audio.c",
+  "src/camera.c",
+  "src/collision.c",
   "src/core.c",
   "src/debug.c",
   "src/gfx.c",
+  "src/grid.c",
   "src/input.c",
   "src/legacy.c",
+  "src/path.c",
   "src/platform_wonderswan.c",
+  "src/pool.c",
   "src/random.c",
   "src/rtc.c",
   "src/runtime_internal.h",
   "src/save.c",
   "src/scene.c",
+  "src/state.c",
+  "src/tile_grid.c",
   "src/wswan_keys.c",
   "src/wswan_rtc.c",
   "src/wswan_storage.c",
@@ -74,14 +90,17 @@ where = ["python"]
   "docs/analysis-and-laboratories.md",
   "docs/cli.md",
   "docs/framework-feedback-loop.md",
+  "docs/gameplay-primitives.md",
   "docs/getting-started.md",
   "docs/input-gestures.md",
   "docs/manifest.md",
   "docs/release-notes-0.3.0.md",
   "docs/release-notes-0.3.1.md",
   "docs/release-notes-0.4.0.md",
+  "docs/release-notes-0.5.0.md",
   "docs/supply-chain.md",
   "docs/swansong-desktop-integration.md",
+  "docs/trace-and-outcomes.md",
   "docs/visual-authoring.md",
 ]
 "share/swansong-sdk/templates/common" = [

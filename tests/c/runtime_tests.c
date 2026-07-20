@@ -34,6 +34,11 @@ static swan_rtc_status_t rtc_boot_second_status;
 static uint16_t last_frame_tapped;
 static uint16_t last_frame_hold_started;
 static uint16_t last_frame_chords;
+static bool trace_reset_during_update;
+
+extern uint8_t swan_debug_frame_trace_mailbox[
+    SWAN_DEBUG_FRAME_TRACE_MAILBOX_HEADER_SIZE +
+    SWAN_DEBUG_FRAME_TRACE_CAPACITY * SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE];
 
 void swan_platform_reset_audio_hardware(void) {
     uint8_t channel;
@@ -80,8 +85,18 @@ void swan_scene_update(swan_scene_id_t scene, const struct swan_frame *frame) {
     last_frame_tapped = frame->input->actions_tapped;
     last_frame_hold_started = frame->input->actions_hold_started;
     last_frame_chords = frame->input->chords_pressed;
-    if ((frame->input->actions_pressed & 1u) != 0)
+    if (trace_reset_during_update &&
+            (frame->input->actions_pressed & (1u << 1)) != 0) {
+        swan_core_reset_session();
+        swan_debug_frame_mark_ending(0);
+    }
+    swan_debug_frame_mark_state((uint16_t)frame->session_tick,
+                                0x53570000u | frame->session_tick);
+    if ((frame->input->actions_pressed & 1u) != 0) {
+        swan_debug_frame_mark_ending(7);
+        swan_debug_frame_mark_audio(0x0004u);
         swan_core_request_scene(1, 42);
+    }
 }
 
 void swan_scene_render(swan_scene_id_t scene) {
@@ -118,6 +133,139 @@ static void test_debug(void) {
     swan_debug_set_overlay(true);
     CHECK(swan_debug_overlay_enabled());
     CHECK(strcmp(swan_debug_build_identity()->sdk_version, SWAN_VERSION_STRING) == 0);
+}
+
+static uint16_t read_trace_u16(const uint8_t *value) {
+    return (uint16_t)(value[0] | (uint16_t)(value[1] << 8));
+}
+
+static uint32_t read_trace_u32(const uint8_t *value) {
+    return (uint32_t)value[0] | ((uint32_t)value[1] << 8) |
+        ((uint32_t)value[2] << 16) | ((uint32_t)value[3] << 24);
+}
+
+static uint32_t trace_record_hash(const uint8_t *record) {
+    uint32_t hash = 2166136261u;
+    uint8_t index;
+    for (index = 0; index < SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE; ++index) {
+        hash ^= record[index];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static void test_deterministic_frame_trace(void) {
+    static const swan_audio_row_t rows[1] = {
+        { { { 12, 0, 15 },
+            { SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE },
+            { SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE },
+            { SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE } } }
+    };
+    static const swan_song_t song = { rows, 1, 256, true };
+    swan_core_config_t config;
+    swan_sprite_t sprite = { 8, 8, 0, 0, 0, true };
+    const swan_debug_frame_trace_t *frame;
+    uint8_t serialized[SWAN_DEBUG_FRAME_TRACE_HEADER_SIZE +
+        SWAN_DEBUG_FRAME_TRACE_CAPACITY * SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE];
+    uint16_t serialized_size;
+
+    memset(&config, 0, sizeof(config));
+    config.initial_scene = 0;
+    config.capabilities = SWAN_HARDWARE_COLOR;
+    config.input.keys[0] = SWAN_KEY_A;
+    config.input.keys[1] = SWAN_KEY_B;
+    trace_reset_during_update = false;
+    swan_core_init(&config);
+    CHECK(swan_debug_frame_trace_count() == 0);
+    swan_debug_frame_mark_audio(0x0002u);
+    CHECK(swan_gfx_set_sprite(0, &sprite));
+    swan_audio_play_music(&song);
+    swan_core_step(SWAN_KEY_A);
+    CHECK(swan_debug_frame_trace_count() == 1);
+    frame = swan_debug_frame_trace_get(0);
+    CHECK(frame != 0 && frame->boot_tick == 1 && frame->session_tick == 1);
+    CHECK(frame->scene == 1 && frame->transition_from == 0 &&
+          frame->transition_to == 1 && frame->transition_argument == 42);
+    CHECK((frame->flags & SWAN_DEBUG_FRAME_TRANSITION) != 0);
+    CHECK((frame->flags & SWAN_DEBUG_FRAME_RENDERED) != 0);
+    CHECK(frame->input_pressed == SWAN_KEY_A && frame->actions_pressed == 1u);
+    CHECK(frame->progress == 1 && frame->state_hash == 0x53570001u);
+    CHECK(frame->ending == 7 && frame->audio_marker == 0x0006u);
+    CHECK(frame->sprites_visible == 1 && frame->maximum_sprites_on_scanline == 1);
+    CHECK(frame->audio_voice_mask == 1);
+    CHECK(frame->audio_sfx_mask == 0);
+
+    trace_reset_during_update = true;
+    swan_core_step(SWAN_KEY_B);
+    trace_reset_during_update = false;
+    CHECK(swan_debug_frame_trace_count() == 2);
+    CHECK(swan_debug_frame_trace_reset_count() == 1);
+    frame = swan_debug_frame_trace_get(1);
+    CHECK(frame->session_tick == 0 && frame->reset_count == 1);
+    CHECK((frame->flags & SWAN_DEBUG_FRAME_SESSION_RESET) != 0);
+    CHECK(frame->progress == 0 && frame->state_hash == 0x53570000u);
+    CHECK(frame->ending == 0 && frame->audio_marker == 0);
+    CHECK(swan_debug_frame_trace_get(2) == 0);
+
+    serialized_size = swan_debug_frame_trace_serialize(serialized,
+                                                        sizeof(serialized));
+    CHECK(serialized_size == SWAN_DEBUG_FRAME_TRACE_HEADER_SIZE +
+          2u * SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE);
+    CHECK(memcmp(serialized, "SWTR", 4) == 0);
+    CHECK(serialized[4] == SWAN_DEBUG_FRAME_TRACE_BINARY_VERSION);
+    CHECK(serialized[5] == SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE);
+    CHECK(read_trace_u16(&serialized[6]) == 2);
+    CHECK(read_trace_u32(&serialized[8]) == 0);
+    CHECK(read_trace_u16(&serialized[12]) == 1);
+    CHECK(read_trace_u32(&serialized[16]) == 2);
+    CHECK(read_trace_u32(&serialized[20]) == swan_debug_frame_trace_stream_hash());
+    CHECK(read_trace_u16(&serialized[24]) == 6);
+    CHECK(read_trace_u16(&serialized[26]) == 1);
+    CHECK(read_trace_u32(&serialized[28]) == 0);
+    CHECK(read_trace_u32(&serialized[SWAN_DEBUG_FRAME_TRACE_HEADER_SIZE]) == 1);
+    CHECK(read_trace_u16(&serialized[SWAN_DEBUG_FRAME_TRACE_HEADER_SIZE + 24]) == 1);
+    CHECK(swan_debug_frame_trace_serialize(serialized,
+        (uint16_t)(serialized_size - 1u)) == 0);
+    CHECK(memcmp(swan_debug_frame_trace_mailbox, "SWMB", 4) == 0);
+    CHECK(swan_debug_frame_trace_mailbox[4] ==
+          SWAN_DEBUG_FRAME_TRACE_MAILBOX_VERSION);
+    CHECK(swan_debug_frame_trace_mailbox[5] == SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE);
+    CHECK(swan_debug_frame_trace_mailbox[6] == SWAN_DEBUG_FRAME_TRACE_CAPACITY);
+    CHECK(swan_debug_frame_trace_mailbox[7] == 2);
+    CHECK(read_trace_u32(&swan_debug_frame_trace_mailbox[20]) == 2);
+    CHECK(read_trace_u16(&swan_debug_frame_trace_mailbox[28]) == 6);
+    CHECK(read_trace_u32(&swan_debug_frame_trace_mailbox[32]) ==
+          (trace_record_hash(&swan_debug_frame_trace_mailbox[
+              SWAN_DEBUG_FRAME_TRACE_MAILBOX_HEADER_SIZE]) ^
+           trace_record_hash(&swan_debug_frame_trace_mailbox[
+              SWAN_DEBUG_FRAME_TRACE_MAILBOX_HEADER_SIZE +
+              SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE])));
+
+    {
+        uint8_t index;
+        for (index = 0; index < SWAN_DEBUG_FRAME_TRACE_CAPACITY + 2u; ++index)
+            swan_core_step(0);
+    }
+    CHECK(swan_debug_frame_trace_count() == SWAN_DEBUG_FRAME_TRACE_CAPACITY);
+    CHECK(swan_debug_frame_trace_dropped() == 4);
+    CHECK(swan_debug_frame_trace_total_count() ==
+          SWAN_DEBUG_FRAME_TRACE_CAPACITY + 4u);
+    CHECK(swan_debug_frame_trace_audio_markers() == 6);
+    CHECK(swan_debug_frame_trace_transition_count() == 1);
+    CHECK(swan_debug_frame_trace_get(0)->boot_tick == 5);
+    {
+        uint8_t index;
+        uint32_t retained_hash = 0;
+        for (index = 0; index < SWAN_DEBUG_FRAME_TRACE_CAPACITY; ++index) {
+            retained_hash ^= trace_record_hash(
+                &swan_debug_frame_trace_mailbox[
+                    SWAN_DEBUG_FRAME_TRACE_MAILBOX_HEADER_SIZE +
+                    (uint16_t)index * SWAN_DEBUG_FRAME_TRACE_RECORD_SIZE]
+            );
+        }
+        CHECK(read_trace_u32(&swan_debug_frame_trace_mailbox[32]) ==
+              retained_hash);
+    }
 }
 
 static void test_input(void) {
@@ -447,6 +595,25 @@ static void test_assets_and_gfx(void) {
     CHECK(swan_gfx_usage()->scanline_overflow);
     CHECK(!swan_gfx_dirty());
 
+    swan_gfx_hide_sprites();
+    sprite.visible = true;
+    sprite.y = -8;
+    CHECK(swan_gfx_set_sprite(0, &sprite));
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 0);
+    sprite.y = -7;
+    CHECK(swan_gfx_set_sprite(0, &sprite));
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 1);
+    sprite.y = 252;
+    CHECK(swan_gfx_set_sprite(0, &sprite));
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 1);
+    sprite.y = 32767;
+    CHECK(swan_gfx_set_sprite(0, &sprite));
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 1);
+    swan_gfx_set_sprites_enabled(false);
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 0);
+    swan_gfx_set_sprites_enabled(true);
+    CHECK(swan_gfx_usage()->maximum_sprites_on_scanline == 1);
+
     swan_gfx_init(&config);
     CHECK(swan_gfx_load_tiles(512, full_upload,
                               SWAN_GFX_TILE_UPLOAD_CAPACITY));
@@ -644,13 +811,13 @@ static void test_wswan_adapters(void) {
     uint8_t byte = 0;
     uint8_t raw[7];
     CHECK(swan_ws_eeprom_storage(&eeprom, &storage, 128));
-    CHECK(eeprom.address_bits == 6 && storage.byte_count == 128);
+    CHECK(eeprom.address_bits == 7 && storage.byte_count == 128);
     CHECK(swan_save_capacity(&storage) == 40);
     CHECK(!swan_ws_eeprom_storage(&eeprom, &storage, 129));
     CHECK(swan_ws_eeprom_storage(&eeprom, &storage, 1024));
     CHECK(eeprom.address_bits == 10);
     CHECK(swan_ws_eeprom_storage(&eeprom, &storage, 2048));
-    CHECK(eeprom.address_bits == 10);
+    CHECK(eeprom.address_bits == 11);
     CHECK(swan_ws_sram_storage(&sram, &storage, 8192));
     CHECK(storage.byte_count == 8192);
     CHECK(swan_ws_sram_storage(&sram, &storage, 524288));
@@ -678,8 +845,26 @@ static void test_wswan_adapters(void) {
 #endif
 }
 
+static void test_canonical_state_hash(void) {
+    swan_state_hash_t first;
+    swan_state_hash_t second;
+    const uint8_t canonical[] = {0x12, 0xFE, 0x56, 0x34, 0xDE, 0xBC, 0x9A, 0x78, 1};
+    swan_state_hash_begin(&first);
+    swan_state_hash_u8(&first, 0x12);
+    swan_state_hash_i8(&first, -2);
+    swan_state_hash_u16(&first, 0x3456);
+    swan_state_hash_u32(&first, 0x789ABCDEu);
+    swan_state_hash_bool(&first, true);
+    swan_state_hash_begin(&second);
+    swan_state_hash_bytes(&second, canonical, sizeof(canonical));
+    CHECK(first.bytes == sizeof(canonical));
+    CHECK(swan_state_hash_finish(&first) == 0x58E5BF2Eu);
+    CHECK(swan_state_hash_finish(&first) == swan_state_hash_finish(&second));
+}
+
 int main(void) {
     test_debug();
+    test_deterministic_frame_trace();
     test_random();
     test_input();
     test_input_gestures();
@@ -691,6 +876,7 @@ int main(void) {
     test_save();
     test_rtc();
     test_wswan_adapters();
+    test_canonical_state_hash();
     printf("runtime: %u checks, %u failures\n", tests_run, tests_failed);
     return tests_failed == 0 ? 0 : 1;
 }

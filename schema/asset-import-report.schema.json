@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/asset-import-report.schema.json",
+  "title": "SwanSong asset import report v1",
+  "type": "object",
+  "required": ["schema", "source", "destination", "provenanceReport", "copied", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-asset-import-report-v1"},
+    "source": {"$ref": "#/$defs/file"},
+    "destination": {"$ref": "#/$defs/file"},
+    "provenanceReport": {"type": "string", "minLength": 1},
+    "copied": {"const": true},
+    "gameplayEvidence": {"const": false},
+    "project": {"type": "string"}
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

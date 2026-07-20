@@ -5,6 +5,18 @@
 #include "model.h"
 
 static game_model_t model;
+#if SWAN_DETERMINISTIC_TRACE
+static uint32_t game_state_hash(void) {
+    swan_state_hash_t hash;
+    uint8_t index;
+    swan_state_hash_begin(&hash);
+    swan_state_hash_u8(&hash, model.cursor);
+    for (index = 0; index < PUZZLE_CELL_COUNT; ++index)
+        swan_state_hash_u8(&hash, model.cells[index]);
+    swan_state_hash_bool(&hash, model.complete);
+    return swan_state_hash_finish(&hash);
+}
+#endif
 void swan_game_boot(void) { game_model_reset(&model); swan_diagnostic_art_load(); }
 void swan_scene_enter(swan_scene_id_t scene, uint16_t argument) {
     (void)argument;
@@ -28,9 +40,17 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
             game_model_clear(&model); swan_core_invalidate();
         }
         if ((frame->input->actions_pressed & (1u << SWAN_ACTION_RESET)) != 0) {
-            game_model_reset(&model); swan_core_invalidate();
+            game_model_reset(&model); swan_core_reset_session(); swan_core_invalidate();
         }
     }
+    {
+        uint8_t index;
+        uint16_t progress = 0;
+        for (index = 0; index < PUZZLE_CELL_COUNT; ++index)
+            progress = (uint16_t)(progress + (model.cells[index] != 0));
+        swan_debug_frame_mark_state(progress, game_state_hash());
+    }
+    swan_debug_frame_mark_ending(model.complete ? 1u : 0u);
 }
 void swan_scene_render(swan_scene_id_t scene) {
     uint8_t i;

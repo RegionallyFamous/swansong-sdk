@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/input-graph.schema.json",
+  "title": "SwanSong content input graph v1",
+  "type": "object",
+  "required": ["schema", "project", "contentSHA256", "nodes"],
+  "properties": {
+    "schema": {"const": "swansong-input-graph-v1"},
+    "project": {"type": "string"},
+    "contentSHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "sha256", "outputs"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"enum": ["manifest", "source", "scenario", "asset", "authoring", "authoring-dependency"]},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "outputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

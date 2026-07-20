@@ -1,8 +1,8 @@
 schema_version = 1
 
 [sdk]
-version = "0.4.0"
-revision = "sha256:4a08d6fa29bf49947576292574d0d868003add6537e01aa0438c4b6eedb85ffe"
+version = "0.5.0"
+revision = "sha256:905d1b7683ea55aebb90703bc4dc708ae7a436c98dae1474e67c9df89601a35c"
 
 [game]
 id = "dewdrop-dash"
@@ -43,8 +43,8 @@ audio_bytes = 4096
 work_ram_bytes = 2048
 vram_tiles = 0
 palettes = 0
-sprites = 0
-sprites_per_scanline = 0
+sprites = 8
+sprites_per_scanline = 4
 
 [[scenes]]
 id = "title"

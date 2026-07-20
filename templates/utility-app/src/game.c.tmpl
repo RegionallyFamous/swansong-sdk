@@ -19,6 +19,35 @@ static utility_outcome_t commit_outcome;
 static bool commit_allow_empty;
 static bool scene_background_ready;
 
+#if SWAN_DETERMINISTIC_TRACE
+static uint32_t utility_state_hash(void) {
+    swan_state_hash_t hash;
+    uint8_t index;
+    swan_state_hash_begin(&hash);
+    swan_state_hash_u8(&hash, model.grid_column);
+    swan_state_hash_u8(&hash, model.grid_row);
+    swan_state_hash_u8(&hash, model.text_cursor);
+    for (index = 0; index < UTILITY_TEXT_CAPACITY; ++index)
+        swan_state_hash_u8(&hash, model.symbols[index]);
+    swan_state_hash_u8(&hash, model.confirm_frames);
+    swan_state_hash_bool(&hash, model.confirm_used_alternate);
+    swan_state_hash_bool(&hash, model.dirty);
+    swan_state_hash_u8(&hash, (uint8_t)model.outcome);
+    return swan_state_hash_finish(&hash);
+}
+
+static void utility_mark_outcome(void) {
+    uint8_t index;
+    uint16_t progress = 0;
+    for (index = 0; index < UTILITY_TEXT_CAPACITY; ++index)
+        progress = (uint16_t)(progress + (model.symbols[index] != 0));
+    swan_debug_frame_mark_state(progress, utility_state_hash());
+    swan_debug_frame_mark_ending((uint8_t)model.outcome);
+}
+#else
+#define utility_mark_outcome() ((void)0)
+#endif
+
 static const swan_instrument_t SWAN_FAR utility_instruments[1] = {{
     {0, 1, 3, 6, 10, 14, 10, 6, 3, 1, 0, 0, 0, 0, 0, 0}, 0, 0
 }};
@@ -64,6 +93,7 @@ static void schedule_persist(utility_outcome_t outcome, bool allow_empty) {
     }
     swan_audio_init(utility_instruments, 1);
     (void)swan_audio_play_sfx(&swan_asset_commit_sfx);
+    swan_debug_frame_mark_audio(1u);
     commit_frames = UTILITY_COMMIT_CUE_FRAMES;
     commit_outcome = outcome;
     commit_allow_empty = allow_empty;
@@ -108,6 +138,7 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
     if (scene == SWAN_SCENE_TITLE) {
         if (action_pressed(frame, SWAN_ACTION_CONFIRM))
             swan_core_request_scene(SWAN_SCENE_EDITOR, 0);
+        utility_mark_outcome();
         return;
     }
 
@@ -118,6 +149,7 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
             persist_document(commit_outcome, commit_allow_empty);
             swan_core_invalidate();
         }
+        utility_mark_outcome();
         return;
     }
 
@@ -141,8 +173,10 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
 
     if ((frame->input->pressed & UTILITY_RESET_CHORD) == UTILITY_RESET_CHORD) {
         utility_model_reset_document(&model);
+        swan_core_reset_session();
         schedule_persist(UTILITY_OUTCOME_RESET, true);
         swan_core_invalidate();
+        utility_mark_outcome();
         return;
     }
     if (utility_model_update_confirm(
@@ -157,6 +191,7 @@ void swan_scene_update(swan_scene_id_t scene, const swan_frame_t *frame) {
         changed = true;
     }
     if (changed) swan_core_invalidate();
+    utility_mark_outcome();
 }
 
 void swan_scene_render(swan_scene_id_t scene) {

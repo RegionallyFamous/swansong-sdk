@@ -31,7 +31,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--source", required=True, type=Path)
     result.add_argument("--work-root", required=True, type=Path)
     result.add_argument("--template", required=True,
-                        choices=("arcade-action", "menu-puzzle", "grid-tactics"))
+                        choices=("arcade-action", "menu-puzzle", "grid-tactics",
+                                 "utility-app"))
     result.add_argument("--swan", default="swan")
     return result
 
@@ -85,12 +86,23 @@ def main(argv: list[str] | None = None) -> int:
     rom = target / (project_id.replace("-", "_") + ".wsc")
     if not rom.is_file() or not 0 < rom.stat().st_size <= 8 * 1024 * 1024:
         raise RuntimeError("canary did not produce a bounded WSC ROM")
+    mono = target / (project_id.replace("-", "_") + ".ws")
+    mono_compatible = 'hardware = "mono-compatible"' in (target / "swan.toml").read_text()
+    if mono_compatible and (
+        not mono.is_file() or not 0 < mono.stat().st_size <= 8 * 1024 * 1024
+    ):
+        raise RuntimeError("mono-compatible canary did not produce a bounded WS ROM")
     result = {
         "commands": ["new", *commands],
         "project": project_id,
         "report": report,
         "romBytes": rom.stat().st_size,
         "romSHA256": hashlib.sha256(rom.read_bytes()).hexdigest(),
+        "monoROMBytes": mono.stat().st_size if mono_compatible else None,
+        "monoROMSHA256": (
+            hashlib.sha256(mono.read_bytes()).hexdigest()
+            if mono_compatible else None
+        ),
         "schema": "swansong-canary-gate-v1",
         "sdkPath": sdk_path,
         "template": args.template,

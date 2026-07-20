@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regionallyfamous.github.io/swansong-sdk/schema/audio-workbench-report.schema.json",
+  "title": "SwanSong audio workbench report v1",
+  "type": "object",
+  "required": ["schema", "output", "wavSHA256", "metrics", "hardwareAccurate", "gameplayEvidence"],
+  "properties": {
+    "schema": {"const": "swansong-audio-workbench-report-v1"},
+    "output": {"type": ["string", "null"]},
+    "wavSHA256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metrics": {"type": "object"},
+    "hardwareAccurate": {"const": false},
+    "gameplayEvidence": {"const": false},
+    "project": {"type": "string"},
+    "source": {"type": "string"}
+  },
+  "additionalProperties": true
+}

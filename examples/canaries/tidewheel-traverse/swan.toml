@@ -1,0 +1,111 @@
+schema_version = 1
+
+[sdk]
+version = "0.5.0"
+revision = "sha256:905d1b7683ea55aebb90703bc4dc708ae7a436c98dae1474e67c9df89601a35c"
+
+[game]
+id = "tidewheel-traverse"
+title = "Tidewheel Traverse"
+version = "0.1.0"
+template = "arcade-action"
+hardware = "mono-compatible"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "none"
+save_bytes = 0
+rtc = false
+
+[controls.actions]
+left = ["X4"]
+right = ["X2"]
+confirm = ["A"]
+reset = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 12288
+vram_tiles = 512
+palettes = 4
+sprites = 8
+sprites_per_scanline = 8
+audio_bytes = 1024
+
+[resources]
+work_ram_bytes = 4096
+vram_tiles = 0
+palettes = 1
+sprites = 0
+sprites_per_scanline = 0
+
+[play]
+ready_frames = 120
+
+[[scenes]]
+id = "title"
+assets = ["title_art"]
+
+[[scenes]]
+id = "play"
+assets = ["play_art"]
+
+[[scenes]]
+id = "result"
+assets = ["play_art"]
+
+[[assets]]
+id = "title_art"
+type = "fullscreen"
+source = "assets/art/title.png"
+group = "title"
+
+[[assets]]
+id = "play_art"
+type = "spritesheet"
+source = "assets/art/play-tiles.png"
+group = "play"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Moonlit tidewheel"
+goal = "Reach a stable mono-safe title on a fresh boot."
+plan = "tests/play/neutral.json"
+required_checks = ["title art is visible", "mono-safe shades remain distinct", "no crash or hang"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "interaction"
+title = "Layered causeway motion"
+goal = "Enter the causeway, move, brace, and observe independent foreground and tide scrolling."
+plan = "tests/play/interaction.json"
+required_checks = ["both tile layers are visible", "foreground camera follows immediately", "background tide follows at a slower cadence", "brace state is visible"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "success"
+title = "Tidewheel arrival"
+goal = "Brace at both marked crossings and reach the far tidewheel."
+plan = "tests/play/success.json"
+required_checks = ["both crossings consume a brace", "camera reaches its clamp", "arrival result is visually distinct"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "failure"
+title = "Swept crossing"
+goal = "Enter the first marked crossing without bracing."
+plan = "tests/play/failure.json"
+required_checks = ["unbraced crossing ends the run", "failure result differs from arrival", "renderer remains responsive"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "reset"
+title = "Deterministic causeway reset"
+goal = "Move and brace, then reset to the exact initial causeway state."
+plan = "tests/play/reset.json"
+required_checks = ["position returns to zero", "tide phase and brace clear", "both cameras return to zero"]
+audio_expectation = "silent"

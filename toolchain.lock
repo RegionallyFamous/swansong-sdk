@@ -1,4 +1,4 @@
-# Native toolchain pinned for SwanSong SDK 0.3 (2026-07-18)
+# Native toolchain pinned for SwanSong SDK 0.5 (2026-07-20)
 target-wswan 0.1.0-3
 target-wswan-syslibs 0.2.0.r254.d7d97ce-1
 wf-tools 0.2.0-3

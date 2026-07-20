@@ -1,0 +1,103 @@
+schema_version = 1
+
+[sdk]
+version = "0.5.0"
+revision = "sha256:905d1b7683ea55aebb90703bc4dc708ae7a436c98dae1474e67c9df89601a35c"
+
+[game]
+id = "daybreak-ledger"
+title = "Daybreak Ledger"
+version = "0.1.0"
+template = "utility-app"
+hardware = "mono-compatible"
+orientation = "horizontal"
+initial_scene = "title"
+
+[cartridge]
+publisher_id = 0
+game_id = 1
+version = 1
+save_type = "eeprom-128b"
+save_bytes = 16
+rtc = true
+
+[controls.actions]
+confirm = ["A"]
+erase = ["B"]
+save = ["START"]
+
+[budgets]
+rom_bytes = 8388608
+work_ram_bytes = 8192
+vram_tiles = 256
+palettes = 8
+sprites = 16
+sprites_per_scanline = 8
+audio_bytes = 4096
+
+[resources]
+work_ram_bytes = 1024
+vram_tiles = 6
+palettes = 1
+sprites = 0
+sprites_per_scanline = 0
+
+[play]
+ready_frames = 180
+
+[[scenes]]
+id = "title"
+
+[[scenes]]
+id = "editor"
+
+[[assets]]
+id = "commit"
+type = "sfx"
+source = "assets/audio/commit.toml"
+group = "common"
+
+[[play.scenarios]]
+id = "neutral"
+title = "Neutral boot"
+goal = "Reach a stable utility title after a fresh boot."
+plan = "tests/play/neutral.json"
+outcome = "tests/outcomes/neutral.json"
+required_checks = ["title state is visually distinct", "RTC capture status is visible", "frame is stable", "no crash or hang"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "interaction"
+title = "Dual-cluster text entry"
+goal = "Use both directional clusters and hold confirm to enter an alternate symbol."
+plan = "tests/play/interaction.json"
+outcome = "tests/outcomes/interaction.json"
+required_checks = ["editor opens", "primary cursor wraps and moves", "secondary slot cursor moves", "held confirm enters an alternate symbol"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "success"
+title = "Saved utility outcome"
+goal = "Enter two symbols, save the record, and receive a distinct success outcome."
+plan = "tests/play/success.json"
+outcome = "tests/outcomes/success.json"
+required_checks = ["entered symbols remain visible", "dirty indicator clears", "saved outcome is visually distinct", "commit cue is audible"]
+audio_expectation = "audible"
+
+[[play.scenarios]]
+id = "failure"
+title = "Empty save and wrap boundaries"
+goal = "Wrap both cursors, reject an empty save, and remain responsive."
+plan = "tests/play/failure.json"
+outcome = "tests/outcomes/failure.json"
+required_checks = ["grid wraps at its left boundary", "text slots wrap at their left boundary", "empty save shows an error", "editor remains responsive"]
+audio_expectation = "silent"
+
+[[play.scenarios]]
+id = "reset"
+title = "Persistent deterministic reset"
+goal = "Edit the record, then use the reset chord to restore and persist the blank state."
+plan = "tests/play/reset.json"
+outcome = "tests/outcomes/reset.json"
+required_checks = ["reset clears every slot", "both cursors return to zero", "reset outcome is distinct", "replay hashes match"]
+audio_expectation = "audible"

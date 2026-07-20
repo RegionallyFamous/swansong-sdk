@@ -59,6 +59,12 @@ tempo, and looping. SFX TOML declares prioritized, timed command steps. Both
 compile into typed runtime sequencer data and are deterministically hashed and
 budgeted.
 
+Project-owned `authoring/*.<kind>.json` documents for tilemaps, sprites,
+palettes, collision, and scene flow compile into typed C alongside declared
+assets. The generated input graph records all source/dependency hashes. To use
+an asset elsewhere in a shared workspace, first copy it into the project with
+`swan asset-import`; manifests never gain permission to follow outside paths.
+
 The runtime exposes `swan_audio_pause()` and `swan_audio_resume()` as an exact
 static pause of music, active SFX, row, and fixed-point phase. While paused,
 ticks do not advance and new SFX are rejected. `swan_audio_position()` returns
@@ -117,6 +123,13 @@ maps to `any`; conflicting old and new declarations are rejected. All generated
 contracts require a fresh boot and media inspection. Generated play contracts
 publish the boundary as `readyFrames` so SwanSong Studio and other consumers use
 the same readiness rule.
+
+An optional `outcome` points to a project-owned
+`swan-scenario-outcome-contract-v1` JSON file. It can require semantic progress,
+final scene/ending/state hash, reset behavior, audio markers, and audible or
+silent inspected SwanSong WAV evidence. Trace-enabled SwanSong execution gates
+the contract and always fails on a runtime panic. See
+[Trace and outcomes](trace-and-outcomes.md).
 
 An audio-sensitive scenario may also declare semantic regression limits. These
 limits are consumed by `swan evidence-diff --scenario ID`; they compare that
