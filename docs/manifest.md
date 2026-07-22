@@ -71,6 +71,15 @@ ticks do not advance and new SFX are rejected. `swan_audio_position()` returns
 the deterministic row/phase plus playing and paused flags; it never consults a
 wall clock and reset/stop clears the position bit-exactly.
 
+`swan_audio_set_sfx_policy()` optionally reserves channels for SFX, selects a
+preferred SFX channel, limits which music channels may be interrupted, assigns
+per-channel music protection priorities, and applies an instantaneous fixed-
+point music-duck multiplier while an effect is active. With the default policy,
+SFX use an idle channel before interrupting the lowest-numbered equal-priority
+music channel. Music rows continue resolving behind an SFX—including
+`SWAN_AUDIO_NO_CHANGE` rows—so the exact current music voice returns when the
+effect ends. A null policy pointer restores the defaults.
+
 `swan_core_reset_session()` stops the logical sequencer before invoking an
 internal platform reset. On WonderSwan this disables every wavetable channel,
 clears its volume and sequencer controls, restores the framework wavetable

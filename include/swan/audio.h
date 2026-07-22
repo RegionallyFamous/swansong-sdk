@@ -9,6 +9,9 @@
 #define SWAN_AUDIO_INSTRUMENT_CAPACITY 16u
 #define SWAN_AUDIO_NOTE_OFF 0xFFu
 #define SWAN_AUDIO_NO_CHANGE 0xFEu
+#define SWAN_AUDIO_CHANNEL_AUTO 0xFFu
+#define SWAN_AUDIO_CHANNEL_MASK_ALL \
+    ((uint8_t)((1u << SWAN_AUDIO_CHANNEL_COUNT) - 1u))
 
 typedef struct {
     uint8_t wave[16];
@@ -65,11 +68,37 @@ typedef struct {
     bool paused;
 } swan_audio_position_t;
 
+/*
+ * Optional deterministic SFX routing. Reserved channels do not present music,
+ * although their resolved music state continues to advance for later reuse.
+ * The preferred channel breaks ties inside the best available class. Music is
+ * stolen only from music_steal_channel_mask, lowest music_priority first.
+ * music_duck_volume is a 0..15 multiplier applied to music while any SFX is
+ * active; 15 disables ducking. Audio initialization and a null pointer passed
+ * to swan_audio_set_sfx_policy() restore these defaults.
+ */
+typedef struct {
+    uint8_t preferred_channel;
+    uint8_t reserved_channel_mask;
+    uint8_t music_steal_channel_mask;
+    uint8_t music_duck_volume;
+    uint8_t music_priority[SWAN_AUDIO_CHANNEL_COUNT];
+} swan_audio_sfx_policy_t;
+
+#define SWAN_AUDIO_SFX_POLICY_DEFAULT { \
+    .preferred_channel = SWAN_AUDIO_CHANNEL_AUTO, \
+    .reserved_channel_mask = 0u, \
+    .music_steal_channel_mask = SWAN_AUDIO_CHANNEL_MASK_ALL, \
+    .music_duck_volume = 15u, \
+    .music_priority = { 0u, 0u, 0u, 0u } \
+}
+
 void swan_audio_init(const swan_instrument_t SWAN_FAR *instruments, uint8_t count);
 void swan_audio_play_music(const swan_song_t SWAN_FAR *song);
 void swan_audio_stop_music(void);
 bool swan_audio_pause(void);
 bool swan_audio_resume(void);
+void swan_audio_set_sfx_policy(const swan_audio_sfx_policy_t *policy);
 int8_t swan_audio_play_sfx(const swan_sfx_t SWAN_FAR *sfx);
 void swan_audio_stop_all(void);
 void swan_audio_tick(void);

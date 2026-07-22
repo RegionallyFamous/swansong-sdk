@@ -1,5 +1,14 @@
 # SwanSong SDK changelog
 
+## Unreleased
+
+- Added deterministic, opt-in SFX routing policy for preferred and reserved
+  channels, music-steal eligibility and priority, and fixed-point ducking.
+- Kept music resolving behind active effects so a stolen voice restores the
+  correct held note, instrument, and volume when the effect ends.
+- Added focused routing, priority, pause, ducking, and held-state restoration
+  regression coverage without changing the default audio API behavior.
+
 ## 0.5.0 — 2026-07-20
 
 - Added fixed-capacity animation, camera, collision, tile-grid, cursor-grid,

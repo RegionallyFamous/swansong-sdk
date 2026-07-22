@@ -2,7 +2,7 @@ schema_version = 1
 
 [sdk]
 version = "0.5.0"
-revision = "sha256:905d1b7683ea55aebb90703bc4dc708ae7a436c98dae1474e67c9df89601a35c"
+revision = "sha256:131099c3601a31146bf09121ec6bf98a8059ddf58fd0c7935029d0a0c620969b"
 
 [game]
 id = "tidewheel-traverse"

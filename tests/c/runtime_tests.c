@@ -640,6 +640,7 @@ static void test_audio(void) {
     static const swan_sfx_step_t step = { { 30, 0, 12 }, 2 };
     swan_sfx_t effects[6];
     swan_audio_position_t position;
+    int8_t effect_channel;
     uint8_t i;
     swan_audio_init(0, 0);
     swan_audio_play_music(&song);
@@ -693,13 +694,150 @@ static void test_audio(void) {
     CHECK(!swan_audio_resume());
 
     swan_audio_play_music(&song);
-    CHECK(swan_audio_play_sfx(&effects[0]) >= 0);
+    effect_channel = swan_audio_play_sfx(&effects[0]);
+    CHECK(effect_channel >= 0);
     CHECK(swan_audio_pause());
     swan_audio_stop_music();
     position = swan_audio_position();
     CHECK(!position.playing && position.paused && position.phase_q8 == 0);
     CHECK(swan_audio_resume());
+    CHECK(swan_audio_voices()[(uint8_t)effect_channel].owner == SWAN_VOICE_SFX);
+    swan_audio_stop_all();
+}
+
+static void test_audio_resolved_music_restore(void) {
+    static const swan_instrument_t instruments[2] = { { { 0 }, 0, 0 },
+                                                      { { 0 }, 0, 0 } };
+    static const swan_audio_row_t rows[4] = {
+        { { { 12, 0, 15 }, { 13, 0, 14 }, { 14, 0, 13 }, { 15, 0, 12 } } },
+        { { { 24, 1, 9 }, NC, NC, NC } },
+        { { NC, NC, NC, NC } },
+        { { NC, NC, NC, NC } }
+    };
+    static const swan_song_t song = { rows, 4, 256, true };
+    static const swan_sfx_step_t step = { { 40, 0, 11 }, 3 };
+    static const swan_sfx_t effect = { &step, 1, 5 };
+    int8_t channel;
+
+    swan_audio_init(instruments, 2);
+    swan_audio_play_music(&song);
+    channel = swan_audio_play_sfx(&effect);
+    CHECK(channel == 0);
+    CHECK(swan_audio_voices()[0].note == 40);
+    swan_audio_tick();
+    CHECK(swan_audio_music_row() == 1);
     CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_SFX);
+    swan_audio_tick();
+    CHECK(swan_audio_music_row() == 2);
+    CHECK(swan_audio_voices()[0].note == 40);
+    swan_audio_tick();
+    CHECK(swan_audio_music_row() == 3);
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_MUSIC);
+    CHECK(swan_audio_voices()[0].note == 24);
+    CHECK(swan_audio_voices()[0].instrument == 1);
+    CHECK(swan_audio_voices()[0].volume == 9);
+    swan_audio_stop_all();
+}
+
+static void test_audio_sfx_policy(void) {
+    static const swan_audio_row_t sparse_rows[1] = {
+        { { { 12, 0, 15 }, NC, NC, NC } }
+    };
+    static const swan_audio_row_t full_rows[1] = {
+        { { { 12, 0, 15 }, { 13, 0, 15 }, { 14, 0, 15 }, { 15, 0, 15 } } }
+    };
+    static const swan_song_t sparse_song = { sparse_rows, 1, 4096, true };
+    static const swan_song_t full_song = { full_rows, 1, 4096, true };
+    static const swan_sfx_step_t audible_step = { { 40, 0, 12 }, 1 };
+    static const swan_sfx_step_t silent_step = {
+        { SWAN_AUDIO_NOTE_OFF, SWAN_AUDIO_NO_CHANGE, SWAN_AUDIO_NO_CHANGE }, 4
+    };
+    static const swan_sfx_t audible_effect = { &audible_step, 1, 5 };
+    static const swan_sfx_t silent_effect = { &silent_step, 1, 5 };
+    static const swan_sfx_t lower_effect = { &audible_step, 1, 4 };
+    swan_audio_sfx_policy_t policy = SWAN_AUDIO_SFX_POLICY_DEFAULT;
+    uint8_t channel;
+
+    swan_audio_init(0, 0);
+    swan_audio_play_music(&sparse_song);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 1);
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_MUSIC);
+    swan_audio_stop_all();
+
+    swan_audio_init(0, 0);
+    policy.preferred_channel = 3;
+    swan_audio_set_sfx_policy(&policy);
+    swan_audio_play_music(&sparse_song);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 3);
+    swan_audio_stop_all();
+
+    swan_audio_init(0, 0);
+    policy = (swan_audio_sfx_policy_t)SWAN_AUDIO_SFX_POLICY_DEFAULT;
+    policy.reserved_channel_mask = (uint8_t)(1u << 2);
+    swan_audio_set_sfx_policy(&policy);
+    swan_audio_play_music(&full_song);
+    CHECK(swan_audio_voices()[2].owner == SWAN_VOICE_SILENT);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 2);
+    swan_audio_tick();
+    CHECK(swan_audio_voices()[2].owner == SWAN_VOICE_SILENT);
+    swan_audio_set_sfx_policy(0);
+    CHECK(swan_audio_voices()[2].owner == SWAN_VOICE_MUSIC);
+    CHECK(swan_audio_voices()[2].note == 14);
+    swan_audio_stop_all();
+
+    swan_audio_init(0, 0);
+    policy = (swan_audio_sfx_policy_t)SWAN_AUDIO_SFX_POLICY_DEFAULT;
+    policy.preferred_channel = 2;
+    policy.music_priority[0] = 9;
+    policy.music_priority[1] = 2;
+    policy.music_priority[2] = 2;
+    policy.music_priority[3] = 9;
+    swan_audio_set_sfx_policy(&policy);
+    swan_audio_play_music(&full_song);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 2);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 1);
+    swan_audio_stop_all();
+
+    swan_audio_init(0, 0);
+    policy = (swan_audio_sfx_policy_t)SWAN_AUDIO_SFX_POLICY_DEFAULT;
+    policy.music_steal_channel_mask = (uint8_t)(1u << 3);
+    swan_audio_set_sfx_policy(&policy);
+    swan_audio_play_music(&full_song);
+    CHECK(swan_audio_play_sfx(&audible_effect) == 3);
+    swan_audio_stop_all();
+
+    swan_audio_init(0, 0);
+    for (channel = 0; channel < SWAN_AUDIO_CHANNEL_COUNT; ++channel) {
+        CHECK(swan_audio_play_sfx(&silent_effect) == (int8_t)channel);
+        CHECK(swan_audio_voices()[channel].owner == SWAN_VOICE_SILENT);
+    }
+    CHECK(swan_audio_play_sfx(&lower_effect) == -1);
+    swan_audio_stop_all();
+}
+
+static void test_audio_deterministic_ducking(void) {
+    static const swan_audio_row_t rows[1] = {
+        { { { 12, 0, 15 }, { 13, 0, 15 }, { 14, 0, 15 }, { 15, 0, 15 } } }
+    };
+    static const swan_song_t song = { rows, 1, 4096, true };
+    static const swan_sfx_step_t step = { { 40, 0, 12 }, 1 };
+    static const swan_sfx_t effect = { &step, 1, 5 };
+    swan_audio_sfx_policy_t policy = SWAN_AUDIO_SFX_POLICY_DEFAULT;
+
+    swan_audio_init(0, 0);
+    policy.preferred_channel = 3;
+    policy.music_duck_volume = 6;
+    swan_audio_set_sfx_policy(&policy);
+    swan_audio_play_music(&song);
+    CHECK(swan_audio_play_sfx(&effect) == 3);
+    CHECK(swan_audio_voices()[0].owner == SWAN_VOICE_MUSIC);
+    CHECK(swan_audio_voices()[0].volume == 6);
+    CHECK(swan_audio_voices()[3].owner == SWAN_VOICE_SFX);
+    CHECK(swan_audio_voices()[3].volume == 12);
+    swan_audio_tick();
+    CHECK(swan_audio_voices()[0].volume == 15);
+    CHECK(swan_audio_voices()[3].owner == SWAN_VOICE_MUSIC);
+    CHECK(swan_audio_voices()[3].volume == 15);
     swan_audio_stop_all();
 }
 
@@ -873,6 +1011,9 @@ int main(void) {
     test_legacy_helpers();
     test_assets_and_gfx();
     test_audio();
+    test_audio_resolved_music_restore();
+    test_audio_sfx_policy();
+    test_audio_deterministic_ducking();
     test_save();
     test_rtc();
     test_wswan_adapters();
