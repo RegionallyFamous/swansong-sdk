@@ -2,7 +2,7 @@ schema_version = 1
 
 [sdk]
 version = "0.5.0"
-revision = "sha256:131099c3601a31146bf09121ec6bf98a8059ddf58fd0c7935029d0a0c620969b"
+revision = "sha256:47c8f48d2e2c7f3d4ed8b6e2adea963007d8ce325b90f410d7509d77c25f3001"
 
 [game]
 id = "daybreak-ledger"

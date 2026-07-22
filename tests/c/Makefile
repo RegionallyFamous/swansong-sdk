@@ -6,7 +6,7 @@ BUILD := $(SDK_ROOT)/build/host-tests
 RUNTIME_SOURCES := $(filter-out $(SDK_ROOT)/src/platform_wonderswan.c,$(wildcard $(SDK_ROOT)/src/*.c))
 TEST := $(BUILD)/runtime_tests
 TRACE_DISABLED_TEST := $(BUILD)/trace_disabled
-GAMEPLAY_SOURCES := $(addprefix $(SDK_ROOT)/src/,animation.c camera.c collision.c grid.c path.c pool.c tile_grid.c)
+GAMEPLAY_SOURCES := $(addprefix $(SDK_ROOT)/src/,animation.c camera.c collision.c grid.c motion.c path.c pool.c records.c score.c tile_grid.c timing.c)
 GAMEPLAY_TEST := $(BUILD)/gameplay_tests
 
 .PHONY: all test clean

@@ -14,9 +14,13 @@
 #include <swan/camera.h>
 #include <swan/animation.h>
 #include <swan/collision.h>
+#include <swan/motion.h>
 #include <swan/pool.h>
 #include <swan/grid.h>
 #include <swan/path.h>
+#include <swan/timing.h>
+#include <swan/score.h>
+#include <swan/records.h>
 #include <swan/audio.h>
 #include <swan/save.h>
 #include <swan/rtc.h>

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added caller-owned frame timers, nested timing-window grades, saturating
+  score chains and multiplier ladders, and stable fixed-capacity rankings with
+  a canonical little-endian save format.
+- Added deterministic 8-fractional-bit motion integration, speed clamps,
+  braking, and bounded restitution without heap allocation or floating point.
+- Documented a complete-catalog WWGP 2001–2003 design review and mapped its
+  recurring handheld-game lessons to existing and newly added SDK features.
 - Added deterministic, opt-in SFX routing policy for preferred and reserved
   channels, music-steal eligibility and priority, and fixed-point ducking.
 - Kept music resolving behind active effects so a stolen voice restores the

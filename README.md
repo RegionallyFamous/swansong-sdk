@@ -66,6 +66,13 @@ asset import; reversible optimizer and SDK migrations; historical budget
 gates; and opt-in semantic runtime traces. See [gameplay primitives](docs/gameplay-primitives.md)
 and [trace/outcome contracts](docs/trace-and-outcomes.md).
 
+The current unreleased runtime adds pause-safe frame timers, explicit timing
+grades, saturating chain/multiplier scoring, stable caller-owned record tables,
+canonical record serialization, and deterministic 8-fractional-bit motion.
+These fill recurring gaps found in the complete WWGP 2001–2003 catalogs
+without adding a genre engine. See the
+[WWGP design review](docs/wwgp-design-lessons.md).
+
 ## Design constraints
 
 - C11 with static capacities; no heap, floating point, recursion, ECS, or far
